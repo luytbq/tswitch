@@ -1,0 +1,90 @@
+════════════════════════════════════════════════════════════════════════════
+QUESTION: How do I add config keymap for tswitch in .tmux.conf (eg: prefix+s)?
+════════════════════════════════════════════════════════════════════════════
+
+ANSWER (The Simplest Way):
+──────────────────────────────────────────────────────────────────────────
+
+1. Open ~/.tmux.conf:
+   vim ~/.tmux.conf
+   (or nano, or your favorite editor)
+
+2. Add this line:
+   bind s display-popup -E -w 80% -h 80% "tswitch"
+
+3. Save the file
+
+4. Reload TMUX:
+   tmux source-file ~/.tmux.conf
+
+5. Test it:
+   Press: prefix + s
+   (default prefix is Ctrl+B, so: Ctrl+B then S)
+
+DONE! ✅
+
+════════════════════════════════════════════════════════════════════════════
+
+WHAT THAT LINE DOES:
+────────────────────────────────────────────────────────────────────────────
+
+bind s                           = Bind the 's' key after prefix
+display-popup                    = Open as a popup overlay
+-E                              = Close popup when command exits
+-w 80% -h 80%                   = Make popup 80% of terminal size
+"tswitch"                       = Run the tswitch command
+
+════════════════════════════════════════════════════════════════════════════
+
+OTHER OPTIONS (If you want to customize):
+
+Size options:
+  -w 60% -h 60%               # Smaller (60%)
+  -w 90% -h 90%               # Larger (90%)
+  -w 100% -h 100%             # Full screen
+  -w 120 -h 40                # Fixed: 120 cols × 40 lines
+
+Key options:
+  bind s ...                  # Use 's' key
+  bind t ...                  # Use 't' key
+  bind C-s ...                # Use Ctrl+S (some terminals suspend on this)
+  bind -n M-s ...             # No prefix needed, just Alt+S
+
+Alternative methods (if popup doesn't work):
+  bind s new-window -n tswitch "tswitch"        # New window
+  bind s split-window -h "tswitch"              # Split pane
+
+════════════════════════════════════════════════════════════════════════════
+
+COMPLETE MINIMAL .tmux.conf EXAMPLE:
+
+set -g prefix C-a
+unbind C-b
+bind C-a send-prefix
+
+bind s display-popup -E -w 80% -h 80% "tswitch"
+
+════════════════════════════════════════════════════════════════════════════
+
+TROUBLESHOOTING:
+
+Problem: "Command not found: tswitch"
+Solution: Use full path:
+  bind s display-popup -E -w 80% -h 80% "/full/path/to/tswitch"
+
+Problem: Popup doesn't appear
+Solution: Check TMUX version (need 3.2+)
+  tmux -V
+  
+  If < 3.2, use:
+  bind s new-window -n tswitch "tswitch"
+
+Problem: Key binding not working
+Solution: Reload config:
+  tmux source-file ~/.tmux.conf
+
+════════════════════════════════════════════════════════════════════════════
+
+THAT'S IT! You're done. See TMUX_INTEGRATION.md for more details and examples.
+
+════════════════════════════════════════════════════════════════════════════
