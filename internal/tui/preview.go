@@ -42,6 +42,9 @@ func (pp *PreviewPanel) SetSize(width, height int) {
 	pp.height = height
 }
 
+// IsCapture reports whether the panel is in capture mode.
+func (pp *PreviewPanel) IsCapture() bool { return pp.mode == PreviewCapture }
+
 // ToggleMode switches between metadata and capture modes.
 func (pp *PreviewPanel) ToggleMode() {
 	if pp.mode == PreviewCapture {

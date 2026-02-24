@@ -85,12 +85,13 @@ func NewModelWith(svc tmux.Service) (*Model, error) {
 	if err := m.loadSessions(); err != nil {
 		m.setStatusError(err.Error())
 	}
-	if len(m.sessions) > 0 {
-		m.previewPanel.SetSessionMetadata(m.sessions[0])
-	}
+	m.syncPreview() //nolint — preview is always metadata on startup, cmd is nil
 
 	return m, nil
 }
+
+// captureResultMsg carries the output of an async pane capture.
+type captureResultMsg struct{ content string }
 
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
@@ -104,6 +105,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKey(msg)
 	case tea.WindowSizeMsg:
 		m.resize(msg.Width, msg.Height)
+	case captureResultMsg:
+		m.previewPanel.SetCaptureContent(msg.content)
 	}
 	return m, nil
 }
@@ -163,12 +166,13 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keys.ActionTogglePreview:
 		m.previewPanel.ToggleMode()
+		return m, m.syncPreview()
 
 	case keys.ActionStartMark:
 		m.enterMarkingMode()
 
 	case keys.ActionFilter:
-		m.enterFilterMode()
+		return m, m.enterFilterMode()
 
 	case keys.ActionNew:
 		return m.handleNew()
@@ -180,13 +184,13 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleKill()
 
 	case keys.ActionMoveUp:
-		m.moveFocus(0, -1)
+		return m, m.moveFocus(0, -1)
 	case keys.ActionMoveDown:
-		m.moveFocus(0, 1)
+		return m, m.moveFocus(0, 1)
 	case keys.ActionMoveLeft:
-		m.moveFocus(-1, 0)
+		return m, m.moveFocus(-1, 0)
 	case keys.ActionMoveRight:
-		m.moveFocus(1, 0)
+		return m, m.moveFocus(1, 0)
 
 	case keys.ActionConfirm:
 		return m.handleConfirm()
@@ -241,10 +245,6 @@ func (m *Model) loadWindows(sessionName string) error {
 		items[i] = WindowCard{w}
 	}
 	m.windowGrid.SetItems(items)
-
-	if len(m.windows) > 0 {
-		m.previewPanel.SetWindowMetadata(m.windows[0])
-	}
 	return nil
 }
 
@@ -267,10 +267,10 @@ func (m *Model) applyFilter() {
 		}
 		m.windowGrid.SetItems(items)
 	}
-	m.syncPreview()
 }
 
-// resetFilter clears filter state without updating the grid (caller must do it).
+// resetFilter clears filter state. The grid already contains all items
+// (no filter was applied when the mode was entered), so no SetItems call needed.
 func (m *Model) resetFilter() {
 	m.filterMode = false
 	m.filterQuery = ""

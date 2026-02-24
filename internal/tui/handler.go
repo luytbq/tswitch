@@ -143,7 +143,7 @@ func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
 			_ = m.loadSessions()
 			m.applyFilter()
 			m.sessionGrid.FocusFirstWhere(func(item GridItem) bool { return item.Title() == name })
-			m.syncPreview()
+			return m, m.syncPreview()
 		}
 
 	case dialogRenameSession:
@@ -162,6 +162,7 @@ func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
 			m.setStatus("Renamed to: " + name)
 			_ = m.loadSessions()
 			m.applyFilter()
+			return m, m.syncPreview()
 		}
 
 	case dialogKillSession:
@@ -179,6 +180,7 @@ func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
 			m.setStatus("Killed: " + name)
 			_ = m.loadSessions()
 			m.applyFilter()
+			return m, m.syncPreview()
 		}
 
 	case dialogNewWindow:
@@ -194,7 +196,7 @@ func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
 			_ = m.loadWindows(m.currentSess)
 			m.applyFilter()
 			m.windowGrid.FocusFirstWhere(func(item GridItem) bool { return item.Title() == name })
-			m.syncPreview()
+			return m, m.syncPreview()
 		}
 
 	case dialogRenameWindow:
@@ -213,6 +215,7 @@ func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
 			m.setStatus("Renamed to: " + name)
 			_ = m.loadWindows(m.currentSess)
 			m.applyFilter()
+			return m, m.syncPreview()
 		}
 
 	case dialogKillWindow:
@@ -230,6 +233,7 @@ func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
 			m.setStatus("Killed: " + winName)
 			_ = m.loadWindows(m.currentSess)
 			m.applyFilter()
+			return m, m.syncPreview()
 		}
 	}
 	return m, nil
@@ -239,10 +243,11 @@ func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
 // Filter / Search
 // ---------------------------------------------------------------------------
 
-func (m *Model) enterFilterMode() {
+func (m *Model) enterFilterMode() tea.Cmd {
 	m.filterMode = true
 	m.filterQuery = ""
 	m.applyFilter()
+	return m.syncPreview()
 }
 
 func (m *Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -251,6 +256,7 @@ func (m *Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.filterMode = false
 		m.filterQuery = ""
 		m.applyFilter()
+		return m, m.syncPreview()
 	case "enter":
 		m.filterMode = false
 	case "backspace":
@@ -258,11 +264,13 @@ func (m *Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			runes := []rune(m.filterQuery)
 			m.filterQuery = string(runes[:len(runes)-1])
 			m.applyFilter()
+			return m, m.syncPreview()
 		}
 	default:
 		if msg.Type == tea.KeyRunes {
 			m.filterQuery += msg.String()
 			m.applyFilter()
+			return m, m.syncPreview()
 		}
 	}
 	return m, nil
@@ -271,13 +279,6 @@ func (m *Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // ---------------------------------------------------------------------------
 // Navigation
 // ---------------------------------------------------------------------------
-
-// moveFocus moves the active grid's focus and updates the preview panel.
-func (m *Model) moveFocus(dx, dy int) {
-	grid := m.activeGrid()
-	grid.MoveFocus(dx, dy)
-	m.syncPreview()
-}
 
 // handleBack navigates backwards: window->session->quit.
 func (m *Model) handleBack() (tea.Model, tea.Cmd) {
@@ -289,9 +290,8 @@ func (m *Model) handleBack() (tea.Model, tea.Cmd) {
 		m.helpShown = false
 	case m.currentMode == ModeWindowGrid:
 		m.resetFilter()
-		m.applyFilter()
 		m.currentMode = ModeSessionGrid
-		m.syncPreview()
+		return m, m.syncPreview()
 	default:
 		return m, tea.Quit
 	}
@@ -311,6 +311,7 @@ func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 		} else {
 			m.resetFilter()
 			m.currentMode = ModeWindowGrid
+			return m, m.syncPreview()
 		}
 
 	case ModeWindowGrid:
@@ -431,8 +432,15 @@ func (m *Model) handleJumpToMark(keyStr string) (tea.Model, tea.Cmd) {
 // Preview sync
 // ---------------------------------------------------------------------------
 
-// syncPreview updates the preview panel to match the currently focused item.
-func (m *Model) syncPreview() {
+// syncPreview updates the preview panel for the currently focused item.
+// In capture mode it clears stale content and returns a tea.Cmd that fetches
+// the pane capture asynchronously; in metadata mode it updates synchronously
+// and returns nil.
+func (m *Model) syncPreview() tea.Cmd {
+	if m.previewPanel.IsCapture() {
+		m.previewPanel.SetCaptureContent("") // clear stale content
+		return m.fetchCapture()
+	}
 	switch m.currentMode {
 	case ModeSessionGrid:
 		if card, ok := m.sessionGrid.GetFocused().(SessionCard); ok {
@@ -443,4 +451,44 @@ func (m *Model) syncPreview() {
 			m.previewPanel.SetWindowMetadata(card.window)
 		}
 	}
+	return nil
+}
+
+// fetchCapture returns a Cmd that runs tmux capture-pane for the focused item
+// in a goroutine and delivers the result as a captureResultMsg.
+func (m *Model) fetchCapture() tea.Cmd {
+	var sessName string
+	winIdx := -1 // -1 = active window of the session
+
+	switch m.currentMode {
+	case ModeSessionGrid:
+		card, ok := m.sessionGrid.GetFocused().(SessionCard)
+		if !ok {
+			return nil
+		}
+		sessName = card.session.Name
+	case ModeWindowGrid:
+		card, ok := m.windowGrid.GetFocused().(WindowCard)
+		if !ok {
+			return nil
+		}
+		sessName = m.currentSess
+		winIdx = card.window.Index
+	default:
+		return nil
+	}
+
+	return func() tea.Msg {
+		content, err := m.tmux.CapturePane(sessName, winIdx, 0)
+		if err != nil {
+			return captureResultMsg{"(capture error: " + err.Error() + ")"}
+		}
+		return captureResultMsg{content}
+	}
+}
+
+// moveFocus moves the active grid's focus and syncs the preview.
+func (m *Model) moveFocus(dx, dy int) tea.Cmd {
+	m.activeGrid().MoveFocus(dx, dy)
+	return m.syncPreview()
 }

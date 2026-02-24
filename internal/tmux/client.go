@@ -141,7 +141,13 @@ func (c *Client) ListPanes(sessionName string, windowIndex int) ([]Pane, error) 
 }
 
 func (c *Client) CapturePane(sessionName string, windowIndex int, paneIndex int) (string, error) {
-	target := fmt.Sprintf("%s:%d.%d", sessionName, windowIndex, paneIndex)
+	var target string
+	if windowIndex < 0 {
+		// Capture the active window/pane of the session.
+		target = sessionName
+	} else {
+		target = fmt.Sprintf("%s:%d.%d", sessionName, windowIndex, paneIndex)
+	}
 	return c.exec.Run("capture-pane", "-t", target, "-p")
 }
 
