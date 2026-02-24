@@ -22,9 +22,10 @@ const (
 // Model is the top-level Bubbletea model.
 type Model struct {
 	// Dependencies (injected via constructor).
-	tmux   tmux.Service
-	config *config.Config
-	styles Styles
+	tmux      tmux.Service
+	config    *config.Config
+	appConfig *config.AppConfig
+	styles    Styles
 
 	// UI components.
 	sessionGrid  *Grid
@@ -55,22 +56,26 @@ type Model struct {
 	isStatusError bool
 }
 
-// NewModel creates a Model wired to a real tmux client.
-func NewModel() (*Model, error) {
-	return NewModelWith(tmux.NewClient())
+// NewModel creates a Model wired to a real tmux client and default app config.
+func NewModel(appCfg *config.AppConfig) (*Model, error) {
+	return NewModelWith(tmux.NewClient(), appCfg)
 }
 
 // NewModelWith creates a Model using the given tmux.Service (useful for tests).
-func NewModelWith(svc tmux.Service) (*Model, error) {
+func NewModelWith(svc tmux.Service, appCfg *config.AppConfig) (*Model, error) {
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		cfg = config.Default()
+	}
+	if appCfg == nil {
+		appCfg = config.DefaultAppConfig()
 	}
 
 	styles := NewStyles()
 	m := &Model{
 		tmux:        svc,
 		config:      cfg,
+		appConfig:   appCfg,
 		styles:      styles,
 		width:       80,
 		height:      24,
@@ -93,6 +98,12 @@ func NewModelWith(svc tmux.Service) (*Model, error) {
 // captureResultMsg carries the output of an async pane capture.
 type captureResultMsg struct{ content string }
 
+// fzfResultMsg carries the result of the fzf directory browser.
+type fzfResultMsg struct {
+	path string // selected directory path (empty if cancelled)
+	err  error
+}
+
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
 	return nil
@@ -107,6 +118,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resize(msg.Width, msg.Height)
 	case captureResultMsg:
 		m.previewPanel.SetCaptureContent(msg.content)
+	case fzfResultMsg:
+		return m.handleFzfResult(msg)
 	}
 	return m, nil
 }
@@ -173,6 +186,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keys.ActionFilter:
 		return m, m.enterFilterMode()
+
+	case keys.ActionBrowseDirs:
+		return m.handleBrowseDirs()
 
 	case keys.ActionNew:
 		return m.handleNew()

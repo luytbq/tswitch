@@ -22,6 +22,8 @@ type Service interface {
 
 	// Session management
 	NewSession(sessionName string) error
+	NewSessionInDir(sessionName string, dir string) error
+	HasSession(sessionName string) bool
 	RenameSession(oldName, newName string) error
 	KillSession(sessionName string) error
 

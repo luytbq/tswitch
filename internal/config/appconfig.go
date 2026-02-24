@@ -6,10 +6,18 @@ import (
 	"path/filepath"
 )
 
+// BrowseDir defines a directory to scan for subdirectories when browsing.
+type BrowseDir struct {
+	Path  string `json:"path"`
+	Depth int    `json:"depth"`
+}
+
 // AppConfig holds read-only application settings loaded from tswitch-config.json.
 // This is separate from Config (config.yaml) which stores runtime state.
 type AppConfig struct {
-	Keys map[string]string `json:"keys"`
+	Keys            map[string]string `json:"keys"`
+	BrowseDirs      []BrowseDir      `json:"browse_dirs"`
+	BrowseExclude   []string         `json:"browse_exclude"`
 }
 
 // DefaultAppConfig returns an AppConfig with no overrides (all defaults).

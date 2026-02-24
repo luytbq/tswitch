@@ -32,6 +32,9 @@ const (
 	ActionReorderLeft
 	ActionReorderRight
 
+	// Browse
+	ActionBrowseDirs // f
+
 	// UI
 	ActionTogglePreview // tab
 	ActionToggleHelp    // ?
@@ -46,6 +49,7 @@ var reservedKeys = map[string]bool{
 	"up": true, "down": true, "left": true, "right": true,
 	"j": true, "k": true, "h": true, "l": true,
 	"?": true, "q": true, "m": true, "/": true,
+	"f": true,
 	"n": true, "r": true, "x": true, "t": true,
 	"H": true, "J": true, "K": true, "L": true,
 }
@@ -66,6 +70,7 @@ var defaultKeymap = map[string]Action{
 
 	"m": ActionStartMark,
 
+	"f": ActionBrowseDirs,
 	"n": ActionNew,
 	"r": ActionRename,
 	"x": ActionKill,
@@ -95,6 +100,7 @@ var actionToName = map[Action]string{
 	ActionReorderDown:    "reorder_down",
 	ActionReorderLeft:    "reorder_left",
 	ActionReorderRight:   "reorder_right",
+	ActionBrowseDirs:    "browse_dirs",
 	ActionTogglePreview:  "toggle_preview",
 	ActionToggleHelp:     "toggle_help",
 	ActionFilter:         "filter",

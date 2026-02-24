@@ -56,6 +56,7 @@ func (m *Model) renderHelp() string {
 	writeHelpLine(&b, s, "r", "Rename session / window")
 	writeHelpLine(&b, s, "x", "Kill session / window")
 	writeHelpLine(&b, s, "H/J/K/L", "Reorder items")
+	writeHelpLine(&b, s, "f", "Browse dirs (fzf)")
 
 	b.WriteString("\n")
 	b.WriteString(s.HelpSection.Render("Search & UI"))
@@ -79,13 +80,23 @@ func writeHelpLine(b *strings.Builder, s Styles, key, desc string) {
 // ---------------------------------------------------------------------------
 
 // renderLayout composes the header + grid|preview + status bar.
-// The grid is padded to its full allocated width so the preview is always
-// flush against the right edge regardless of how many cards are rendered.
+// The grid is padded to the actual width used by cards (not the full
+// allocated width) so the preview sits snugly next to the grid.
+// The final output is clamped to the terminal height to prevent overflow.
 func (m *Model) renderLayout(header, grid, preview string) string {
-	gridW := m.activeGrid().width
-	paddedGrid := lipgloss.NewStyle().Width(gridW).Render(grid)
+	usedW := m.activeGrid().UsedWidth()
+	paddedGrid := lipgloss.NewStyle().Width(usedW).Render(grid)
 	main := lipgloss.JoinHorizontal(lipgloss.Top, paddedGrid, " ", preview)
-	return lipgloss.JoinVertical(lipgloss.Left, header, main, m.renderStatusBar())
+
+	full := lipgloss.JoinVertical(lipgloss.Left, header, main, m.renderStatusBar())
+
+	// Clamp output to terminal height so long preview content doesn't push
+	// the grid off-screen.
+	lines := strings.Split(full, "\n")
+	if len(lines) > m.height {
+		lines = lines[:m.height]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m *Model) renderStatusBar() string {
@@ -101,9 +112,9 @@ func (m *Model) renderStatusBar() string {
 	// Left side: keybind hints (always shown).
 	var hints string
 	if m.currentMode == ModeSessionGrid {
-		hints = "j/k:nav  J/K:reorder  enter:select  space:quick  /:search  n:new  r:rename  x:kill  m:mark  ?:help  q:quit"
+		hints = "j/k:nav  J/K:reorder  enter:select  space:quick  /:search  n:new  r:rename  x:kill  m:mark  f:browse  ?:help  q:quit"
 	} else {
-		hints = "j/k:nav  J/K:reorder  enter:switch  /:search  n:new  r:rename  x:kill  m:mark  esc:back  ?:help  q:quit"
+		hints = "j/k:nav  J/K:reorder  enter:switch  /:search  n:new  r:rename  x:kill  m:mark  f:browse  esc:back  ?:help  q:quit"
 	}
 	left := s.StatusHints.Render(hints)
 

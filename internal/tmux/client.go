@@ -195,6 +195,16 @@ func (c *Client) NewSession(sessionName string) error {
 	return err
 }
 
+func (c *Client) NewSessionInDir(sessionName string, dir string) error {
+	_, err := c.exec.Run("new-session", "-d", "-s", sessionName, "-c", dir)
+	return err
+}
+
+func (c *Client) HasSession(sessionName string) bool {
+	_, err := c.exec.Run("has-session", "-t", sessionName)
+	return err == nil
+}
+
 func (c *Client) RenameSession(oldName, newName string) error {
 	_, err := c.exec.Run("rename-session", "-t", oldName, newName)
 	return err
