@@ -20,5 +20,21 @@
     "toggle_help": "?",
     "filter": "/",
     "quit": "q"
-  }
+  },
+  "browse_dirs": [
+    {"path": "~/projects", "depth": 4},
+    {"path": "~/.config", "depth": 4},
+    {"path": "/home/luytbq", "depth": 1}
+  ],
+  "browse_exclude": [
+    ".angular",
+    ".git",
+    ".settings",
+    ".vscode",
+    "__pycache__",
+    "dist",
+    "lib",
+    "node_modules",
+    "vendor"
+  ]
 }
