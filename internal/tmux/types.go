@@ -16,6 +16,7 @@ type Service interface {
 
 	// Navigation
 	SwitchToSession(sessionName string) error
+	SwitchToLast() error
 	SwitchClient(sessionName string, windowIndex int) error
 	AttachSession(sessionName string) error
 

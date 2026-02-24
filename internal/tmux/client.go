@@ -169,6 +169,12 @@ func (c *Client) SwitchToSession(sessionName string) error {
 	return err
 }
 
+// SwitchToLast switches to the last (previously active) session.
+func (c *Client) SwitchToLast() error {
+	_, err := c.exec.Run("switch-client", "-l")
+	return err
+}
+
 func (c *Client) SwitchClient(sessionName string, windowIndex int) error {
 	target := fmt.Sprintf("%s:%d", sessionName, windowIndex)
 	_, err := c.exec.Run("switch-client", "-t", target)
