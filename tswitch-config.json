@@ -1,0 +1,24 @@
+{
+  "keys": {
+    "move_up": "k",
+    "move_down": "j",
+    "move_left": "h",
+    "move_right": "l",
+    "confirm": "enter",
+    "quick_swap": "space",
+    "back": "esc",
+    "start_mark": "m",
+    "new": "n",
+    "rename": "r",
+    "kill": "d",
+    "tag": "t",
+    "reorder_up": "K",
+    "reorder_down": "J",
+    "reorder_left": "H",
+    "reorder_right": "L",
+    "toggle_preview": "tab",
+    "toggle_help": "?",
+    "filter": "/",
+    "quit": "q"
+  }
+}

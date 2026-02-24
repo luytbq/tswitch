@@ -77,6 +77,64 @@ var defaultKeymap = map[string]Action{
 	"q":   ActionQuit,
 }
 
+// actionToName maps actions to their config-file names.
+var actionToName = map[Action]string{
+	ActionMoveUp:         "move_up",
+	ActionMoveDown:       "move_down",
+	ActionMoveLeft:       "move_left",
+	ActionMoveRight:      "move_right",
+	ActionConfirm:        "confirm",
+	ActionQuickSwap:      "quick_swap",
+	ActionBack:           "back",
+	ActionStartMark:      "start_mark",
+	ActionNew:            "new",
+	ActionRename:         "rename",
+	ActionKill:           "kill",
+	ActionTag:            "tag",
+	ActionReorderUp:      "reorder_up",
+	ActionReorderDown:    "reorder_down",
+	ActionReorderLeft:    "reorder_left",
+	ActionReorderRight:   "reorder_right",
+	ActionTogglePreview:  "toggle_preview",
+	ActionToggleHelp:     "toggle_help",
+	ActionFilter:         "filter",
+	ActionQuit:           "quit",
+}
+
+// nameToAction is the reverse of actionToName.
+var nameToAction map[string]Action
+
+func init() {
+	nameToAction = make(map[string]Action, len(actionToName))
+	for a, n := range actionToName {
+		nameToAction[n] = a
+	}
+}
+
+// ApplyOverrides replaces default key bindings with user-specified overrides.
+// Each entry maps an action name (e.g. "quit") to a key string (e.g. "Q").
+// The old key for that action is removed; the new key is registered.
+func ApplyOverrides(overrides map[string]string) {
+	for actionName, newKey := range overrides {
+		action, ok := nameToAction[actionName]
+		if !ok {
+			continue // unknown action name, skip
+		}
+
+		// Remove old key(s) bound to this action.
+		for key, a := range defaultKeymap {
+			if a == action {
+				delete(defaultKeymap, key)
+				delete(reservedKeys, key)
+			}
+		}
+
+		// Add new binding.
+		defaultKeymap[newKey] = action
+		reservedKeys[newKey] = true
+	}
+}
+
 // IsReserved returns true if the key is reserved and cannot be used as a mark.
 func IsReserved(key string) bool {
 	return reservedKeys[key]
