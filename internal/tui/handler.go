@@ -19,12 +19,12 @@ func (m *Model) moveFocus(dx, dy int) {
 	m.syncPreview()
 }
 
-// handleBack navigates backwards: window→session→quit.
+// handleBack navigates backwards: window->session->quit.
 func (m *Model) handleBack() (tea.Model, tea.Cmd) {
 	switch {
 	case m.markingMode:
 		m.markingMode = false
-		m.setError("")
+		m.setStatus("")
 	case m.helpShown:
 		m.helpShown = false
 	case m.currentMode == ModeWindowGrid:
@@ -45,7 +45,7 @@ func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if err := m.loadWindows(card.session.Name); err != nil {
-			m.setError(err.Error())
+			m.setStatusError(err.Error())
 		} else {
 			m.currentMode = ModeWindowGrid
 		}
@@ -56,7 +56,7 @@ func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if err := m.tmux.SwitchClient(m.currentSess, card.window.Index); err != nil {
-			m.setError(err.Error())
+			m.setStatusError(err.Error())
 		} else {
 			return m, tea.Quit
 		}
@@ -73,8 +73,9 @@ func (m *Model) handleQuickSwap() (tea.Model, tea.Cmd) {
 	if !ok || card.session.WindowCount == 0 {
 		return m, nil
 	}
-	if err := m.tmux.SwitchClient(card.session.Name, 0); err != nil {
-		m.setError(err.Error())
+
+	if err := m.tmux.SwitchToSession(card.session.Name); err != nil {
+		m.setStatusError(err.Error())
 		return m, nil
 	}
 	return m, tea.Quit
@@ -89,10 +90,8 @@ func (m *Model) enterMarkingMode() {
 	m.markingMode = true
 	if m.currentMode == ModeSessionGrid {
 		m.markingTarget = "session"
-		m.setError("Press a key to mark this session (ESC to cancel)")
 	} else {
 		m.markingTarget = "window"
-		m.setError("Press a key to mark this window (ESC to cancel)")
 	}
 }
 
@@ -102,12 +101,12 @@ func (m *Model) handleMarkAssignment(keyStr string) (tea.Model, tea.Cmd) {
 
 	// Cancel on ESC.
 	if keyStr == "esc" {
-		m.setError("")
+		m.setStatus("")
 		return m, nil
 	}
 
 	if keys.IsReserved(keyStr) {
-		m.setError(fmt.Sprintf("'%s' is reserved — pick another key", keyStr))
+		m.setStatusError(fmt.Sprintf("'%s' is reserved", keyStr))
 		return m, nil
 	}
 
@@ -117,11 +116,13 @@ func (m *Model) handleMarkAssignment(keyStr string) (tea.Model, tea.Cmd) {
 		if !ok {
 			return m, nil
 		}
-		m.config.SetMark(keyStr, card.session.Name, 0, 0)
+		// Remove any existing mark pointing to the same target before setting new one.
+		m.config.RemoveMarksForTarget(card.session.Name, -1)
+		m.config.SetMark(keyStr, card.session.Name, -1, 0)
 		if err := config.SaveConfig(m.config); err != nil {
-			m.setError(fmt.Sprintf("Failed to save mark: %v", err))
+			m.setStatusError(fmt.Sprintf("Failed to save: %v", err))
 		} else {
-			m.setError(fmt.Sprintf("Marked '%s' → %s", card.session.Name, keyStr))
+			m.setStatus(fmt.Sprintf("Marked %s -> [%s]", card.session.Name, keyStr))
 		}
 
 	case "window":
@@ -129,11 +130,12 @@ func (m *Model) handleMarkAssignment(keyStr string) (tea.Model, tea.Cmd) {
 		if !ok {
 			return m, nil
 		}
+		m.config.RemoveMarksForTarget(m.currentSess, card.window.Index)
 		m.config.SetMark(keyStr, m.currentSess, card.window.Index, 0)
 		if err := config.SaveConfig(m.config); err != nil {
-			m.setError(fmt.Sprintf("Failed to save mark: %v", err))
+			m.setStatusError(fmt.Sprintf("Failed to save: %v", err))
 		} else {
-			m.setError(fmt.Sprintf("Marked '%s:%d' → %s", m.currentSess, card.window.Index, keyStr))
+			m.setStatus(fmt.Sprintf("Marked %s:%d -> [%s]", m.currentSess, card.window.Index, keyStr))
 		}
 	}
 
@@ -144,11 +146,19 @@ func (m *Model) handleMarkAssignment(keyStr string) (tea.Model, tea.Cmd) {
 func (m *Model) handleJumpToMark(keyStr string) (tea.Model, tea.Cmd) {
 	mark := m.config.GetMark(keyStr)
 	if mark == nil {
-		m.setError(fmt.Sprintf("no mark '%s'", keyStr))
+		m.setStatusError(fmt.Sprintf("no mark '%s'", keyStr))
 		return m, nil
 	}
-	if err := m.tmux.SwitchClient(mark.SessionName, mark.WindowIndex); err != nil {
-		m.setError(err.Error())
+
+	var err error
+	if mark.WindowIndex < 0 {
+		// Session-level mark: let tmux pick the active window.
+		err = m.tmux.SwitchToSession(mark.SessionName)
+	} else {
+		err = m.tmux.SwitchClient(mark.SessionName, mark.WindowIndex)
+	}
+	if err != nil {
+		m.setStatusError(err.Error())
 		return m, nil
 	}
 	return m, tea.Quit

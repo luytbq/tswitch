@@ -43,9 +43,10 @@ type Model struct {
 	width  int
 	height int
 
-	// Feedback.
-	lastErr     string
-	lastErrTime time.Time
+	// Feedback (status bar message with auto-expiry).
+	statusMsg     string
+	statusMsgTime time.Time
+	isStatusError bool
 }
 
 // NewModel creates a Model wired to a real tmux client.
@@ -70,12 +71,13 @@ func NewModelWith(svc tmux.Service) (*Model, error) {
 		currentMode: ModeSessionGrid,
 	}
 
-	m.sessionGrid = NewGrid(50, m.height-3, styles)
-	m.windowGrid = NewGrid(50, m.height-3, styles)
-	m.previewPanel = NewPreviewPanel(25, m.height-3, styles)
+	gridW, gridH, previewW, previewH := m.layoutSizes()
+	m.sessionGrid = NewGrid(gridW, gridH, styles)
+	m.windowGrid = NewGrid(gridW, gridH, styles)
+	m.previewPanel = NewPreviewPanel(previewW, previewH, styles)
 
 	if err := m.loadSessions(); err != nil {
-		m.setError(err.Error())
+		m.setStatusError(err.Error())
 	}
 	if len(m.sessions) > 0 {
 		m.previewPanel.SetSessionMetadata(m.sessions[0])
@@ -215,18 +217,94 @@ func (m *Model) loadWindows(sessionName string) error {
 func (m *Model) resize(w, h int) {
 	m.width = w
 	m.height = h
-	m.sessionGrid.SetSize(w-28, h-3)
-	m.windowGrid.SetSize(w-28, h-3)
-	m.previewPanel.SetSize(25, h-3)
+
+	gridW, gridH, previewW, previewH := m.layoutSizes()
+	m.sessionGrid.SetSize(gridW, gridH)
+	m.windowGrid.SetSize(gridW, gridH)
+	m.previewPanel.SetSize(previewW, previewH)
+}
+
+// layoutSizes computes the width/height for the grid and preview panel
+// based on the current terminal dimensions.
+//
+// Horizontal: [ grid cards ] GAP [ preview_border(content) ]
+//   - Each card renders at cardWidthTotal()-cardGap + cardGap wide.
+//   - Preview rendered width = previewContentW + 2 (border left+right).
+//   - Gap = 1 char between grid and preview.
+//   - Grid gets whatever width remains after preview + gap.
+//
+// Vertical: header(1 line) + body + statusbar(1 line)
+//
+// Strategy: allocate enough columns for cards first, give remainder to preview.
+func (m *Model) layoutSizes() (gridW, gridH, previewContentW, previewH int) {
+	const gap = 1
+	const previewBorder = 2 // lipgloss border adds 2 to rendered width
+
+	// Determine how many card columns fit, aiming for at least 2 if possible.
+	// Each card needs cardWidthTotal() of horizontal space.
+	cwt := cardWidthTotal() // 27 (rendered 26 + gap 1)
+
+	// Try to fit at least 2 columns; fall back to 1 on very small terminals.
+	minGridW := cwt * 2 // ideal: at least 2 columns
+	if m.width < minGridW+previewBorder+gap+16 {
+		// Too narrow for 2 columns + preview; use 1 column.
+		minGridW = cwt
+	}
+
+	// Preview gets the remaining space, clamped to a reasonable range.
+	previewRendered := m.width - minGridW - gap
+	previewContentW = previewRendered - previewBorder
+	if previewContentW < 16 {
+		previewContentW = 16
+	}
+	if previewContentW > 40 {
+		previewContentW = 40
+	}
+
+	// Recalculate: after clamping preview, grid gets the actual remainder.
+	previewRendered = previewContentW + previewBorder
+	gridW = m.width - previewRendered - gap
+	if gridW < cwt {
+		gridW = cwt
+	}
+
+	bodyH := m.height - 2 // header(1) + statusbar(1)
+	if bodyH < 1 {
+		bodyH = 1
+	}
+	gridH = bodyH
+	previewH = bodyH
+	return
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-func (m *Model) setError(msg string) {
-	m.lastErr = msg
-	m.lastErrTime = time.Now()
+func (m *Model) setStatus(msg string) {
+	m.statusMsg = msg
+	m.statusMsgTime = time.Now()
+	m.isStatusError = false
+}
+
+func (m *Model) setStatusError(msg string) {
+	m.statusMsg = msg
+	m.statusMsgTime = time.Now()
+	m.isStatusError = true
+}
+
+// statusMessage returns the current status message, or empty if it has expired.
+const statusMsgTTL = 5 * time.Second
+
+func (m *Model) statusMessage() string {
+	if m.statusMsg == "" {
+		return ""
+	}
+	if time.Since(m.statusMsgTime) > statusMsgTTL {
+		m.statusMsg = ""
+		return ""
+	}
+	return m.statusMsg
 }
 
 func (m *Model) activeGrid() *Grid {
@@ -238,6 +316,9 @@ func (m *Model) activeGrid() *Grid {
 
 // formatTimeSince returns a human-readable relative time string.
 func formatTimeSince(t time.Time) string {
+	if t.IsZero() {
+		return "?"
+	}
 	d := time.Since(t)
 	switch {
 	case d < time.Minute:

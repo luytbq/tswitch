@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/user/tswitch/internal/tmux"
 )
 
@@ -54,31 +53,46 @@ func (pp *PreviewPanel) ToggleMode() {
 
 // SetSessionMetadata populates the panel for a session.
 func (pp *PreviewPanel) SetSessionMetadata(session tmux.Session) {
-	pp.title = fmt.Sprintf("Session: %s", session.Name)
-	pp.content = fmt.Sprintf(
-		"Name:        %s\nWindows:     %d\nAttached:    %v\nWidth:       %d\nHeight:      %d\nCreated:     %s\nLast Active: %s",
-		session.Name,
-		session.WindowCount,
-		session.Attached,
-		session.Width,
-		session.Height,
-		session.Created.Format("2006-01-02 15:04:05"),
-		session.LastActive.Format("2006-01-02 15:04:05"),
-	)
+	pp.title = "Session"
+
+	var lines []string
+	lines = append(lines, pp.styles.CardTitle.Render(session.Name))
+	lines = append(lines, "")
+
+	attached := "no"
+	if session.Attached {
+		attached = pp.styles.CardAttached.Render("yes")
+	}
+
+	lines = append(lines, fmt.Sprintf("Windows:     %d", session.WindowCount))
+	lines = append(lines, fmt.Sprintf("Attached:    %s", attached))
+	lines = append(lines, fmt.Sprintf("Created:     %s", formatTime(session.Created)))
+	lines = append(lines, fmt.Sprintf("Last Active: %s", formatTime(session.LastActive)))
+
+	pp.content = strings.Join(lines, "\n")
 }
 
 // SetWindowMetadata populates the panel for a window.
 func (pp *PreviewPanel) SetWindowMetadata(window tmux.Window) {
-	pp.title = fmt.Sprintf("Window: %s", window.Name)
-	pp.content = fmt.Sprintf(
-		"Name:        %s\nIndex:       %d\nPanes:       %d\nLayout:      %s\nWorking Dir: %s\nActive:      %v",
-		window.Name,
-		window.Index,
-		window.PaneCount,
-		window.Layout,
-		window.WorkingDir,
-		window.Active,
-	)
+	pp.title = "Window"
+
+	var lines []string
+	lines = append(lines, pp.styles.CardTitle.Render(fmt.Sprintf("%d: %s", window.Index, window.Name)))
+	lines = append(lines, "")
+
+	active := "no"
+	if window.Active {
+		active = pp.styles.CardAttached.Render("yes")
+	}
+
+	lines = append(lines, fmt.Sprintf("Panes:       %d", window.PaneCount))
+	lines = append(lines, fmt.Sprintf("Active:      %s", active))
+	lines = append(lines, fmt.Sprintf("Layout:      %s", window.Layout))
+	if window.WorkingDir != "" {
+		lines = append(lines, fmt.Sprintf("Dir:         %s", window.WorkingDir))
+	}
+
+	pp.content = strings.Join(lines, "\n")
 }
 
 // SetCaptureContent sets raw capture-pane output.
@@ -87,29 +101,56 @@ func (pp *PreviewPanel) SetCaptureContent(content string) {
 }
 
 // Render returns the rendered panel string.
+//
+// pp.width  = content width passed to lipgloss Width(). Rendered = pp.width + 2 (border).
+// pp.height = total body height. We set lipgloss Height(pp.height - 2) so
+//
+//	rendered height = (pp.height - 2) + 2 = pp.height.
 func (pp *PreviewPanel) Render() string {
-	body := pp.content
-	if body == "" {
-		body = "(no content)"
+	if pp.width < 10 {
+		return ""
 	}
 
-	// Truncate to fit.
+	titleLine := pp.styles.PreviewTitle.Render(pp.title)
+
+	body := pp.content
+	if body == "" {
+		body = pp.styles.CardSubtle.Render("(no content)")
+	}
+
+	// Usable lines inside the box: total height - border(2) - padding(2) - title(1) - blank after title(1).
+	maxLines := pp.height - 6
+	if maxLines < 1 {
+		maxLines = 1
+	}
 	lines := strings.Split(body, "\n")
-	maxLines := pp.height - 4 // borders + title padding
 	if len(lines) > maxLines {
 		lines = lines[:maxLines]
 	}
-	truncated := strings.Join(lines, "\n")
 
-	inner := lipgloss.NewStyle().
+	inner := titleLine + "\n" + strings.Join(lines, "\n")
+
+	// lipgloss: Width/Height set content area; border adds +2 each axis.
+	contentH := pp.height - 2
+	if contentH < 1 {
+		contentH = 1
+	}
+
+	return pp.styles.PreviewBorder.
+		Copy().
 		Padding(1).
-		Width(pp.width - 4).
-		Render(truncated)
-
-	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240")).
 		Width(pp.width).
-		Height(pp.height).
+		Height(contentH).
 		Render(inner)
+}
+
+// formatTime formats a time for display, handling zero times.
+func formatTime(t interface{ Format(string) string }) string {
+	type zeroChecker interface {
+		IsZero() bool
+	}
+	if z, ok := t.(zeroChecker); ok && z.IsZero() {
+		return "?"
+	}
+	return t.Format("2006-01-02 15:04")
 }

@@ -9,22 +9,27 @@ type Styles struct {
 	CardFocusedStyle lipgloss.Style
 	CardTitle        lipgloss.Style
 	CardSubtle       lipgloss.Style
+	CardAttached     lipgloss.Style
+	MarkBadge        lipgloss.Style
 
 	// Preview
-	PreviewStyle lipgloss.Style
-	PreviewTitle lipgloss.Style
-
-	// Filter
-	FilterStyle       lipgloss.Style
-	FilterPlaceholder lipgloss.Style
+	PreviewBorder lipgloss.Style
+	PreviewTitle  lipgloss.Style
 
 	// Status bar
-	StatusBar    lipgloss.Style
-	StatusBarKey lipgloss.Style
+	StatusBar     lipgloss.Style
+	StatusHints   lipgloss.Style
+	StatusSuccess lipgloss.Style
+	StatusError   lipgloss.Style
+
+	// Header
+	HeaderStyle lipgloss.Style
 
 	// Help
-	HelpStyle lipgloss.Style
-	HelpKey   lipgloss.Style
+	HelpStyle   lipgloss.Style
+	HelpKey     lipgloss.Style
+	HelpSection lipgloss.Style
+	HelpDesc    lipgloss.Style
 
 	// Borders
 	BorderStyle lipgloss.Style
@@ -37,13 +42,13 @@ func NewStyles() Styles {
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("240")).
 			Padding(0, 1).
-			Width(cardContentWidth),
+			Width(cardContentWidth + 2), // +2 for left/right padding
 
 		CardFocusedStyle: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("39")).
 			Padding(0, 1).
-			Width(cardContentWidth),
+			Width(cardContentWidth + 2),
 
 		CardTitle: lipgloss.NewStyle().
 			Bold(true).
@@ -52,40 +57,54 @@ func NewStyles() Styles {
 		CardSubtle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("243")),
 
-		PreviewStyle: lipgloss.NewStyle().
+		CardAttached: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("42")).
+			Bold(true),
+
+		MarkBadge: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("228")).
+			Bold(true),
+
+		PreviewBorder: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("240")).
-			Padding(1),
+			BorderForeground(lipgloss.Color("240")),
 
 		PreviewTitle: lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("33")),
 
-		FilterStyle: lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("240")).
+		StatusBar: lipgloss.NewStyle().
+			Background(lipgloss.Color("235")).
 			Padding(0, 1),
 
-		FilterPlaceholder: lipgloss.NewStyle().
+		StatusHints: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("243")),
 
-		StatusBar: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("240")).
-			Background(lipgloss.Color("235")).
-			Padding(0, 1),
+		StatusSuccess: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("42")),
 
-		StatusBarKey: lipgloss.NewStyle().
+		StatusError: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("196")),
+
+		HeaderStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("33")).
-			Bold(true),
+			Bold(true).
+			PaddingLeft(1),
 
 		HelpStyle: lipgloss.NewStyle().
-			Background(lipgloss.Color("235")).
-			Foreground(lipgloss.Color("248")).
-			Padding(1),
+			Padding(1, 2),
 
 		HelpKey: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("33")).
 			Bold(true),
+
+		HelpSection: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("39")).
+			Bold(true).
+			MarginTop(1),
+
+		HelpDesc: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("248")),
 
 		BorderStyle: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).

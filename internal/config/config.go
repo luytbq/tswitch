@@ -105,6 +105,17 @@ func (c *Config) GetMark(key string) *Mark {
 
 func (c *Config) DeleteMark(key string) { delete(c.Marks, key) }
 
+// RemoveMarksForTarget deletes all existing marks that point to the
+// same session+window combination, so that reassigning a new key to
+// the same target replaces the old key rather than accumulating duplicates.
+func (c *Config) RemoveMarksForTarget(sessionName string, windowIndex int) {
+	for key, m := range c.Marks {
+		if m.SessionName == sessionName && m.WindowIndex == windowIndex {
+			delete(c.Marks, key)
+		}
+	}
+}
+
 func (c *Config) HasMark(key string) bool {
 	_, ok := c.Marks[key]
 	return ok

@@ -129,6 +129,13 @@ func (c *Client) CapturePane(sessionName string, windowIndex int, paneIndex int)
 // Navigation
 // ---------------------------------------------------------------------------
 
+// SwitchToSession switches to a session without specifying a window,
+// letting tmux choose the current/last-active window automatically.
+func (c *Client) SwitchToSession(sessionName string) error {
+	_, err := c.exec.Run("switch-client", "-t", sessionName)
+	return err
+}
+
 func (c *Client) SwitchClient(sessionName string, windowIndex int) error {
 	target := fmt.Sprintf("%s:%d", sessionName, windowIndex)
 	_, err := c.exec.Run("switch-client", "-t", target)
@@ -201,11 +208,13 @@ func parseSessionLine(line string) (Session, error) {
 	}
 
 	var windowCount int
-	fmt.Sscanf(parts[1], "%d", &windowCount)
+	if _, err := fmt.Sscanf(parts[1], "%d", &windowCount); err != nil {
+		return Session{}, fmt.Errorf("invalid window count %q: %w", parts[1], err)
+	}
 
 	var width, height int
-	fmt.Sscanf(parts[5], "%d", &width)
-	fmt.Sscanf(parts[6], "%d", &height)
+	fmt.Sscanf(parts[5], "%d", &width)  // non-critical, zero is acceptable
+	fmt.Sscanf(parts[6], "%d", &height) // non-critical, zero is acceptable
 
 	return Session{
 		Name:        parts[0],
@@ -225,8 +234,10 @@ func parseWindowLine(line string) (Window, error) {
 	}
 
 	var index, paneCount int
-	fmt.Sscanf(parts[0], "%d", &index)
-	fmt.Sscanf(parts[2], "%d", &paneCount)
+	if _, err := fmt.Sscanf(parts[0], "%d", &index); err != nil {
+		return Window{}, fmt.Errorf("invalid window index %q: %w", parts[0], err)
+	}
+	fmt.Sscanf(parts[2], "%d", &paneCount) // zero is acceptable fallback
 
 	return Window{
 		Index:      index,
@@ -245,9 +256,11 @@ func parsePaneLine(line string) (Pane, error) {
 	}
 
 	var index, width, height int
-	fmt.Sscanf(parts[0], "%d", &index)
-	fmt.Sscanf(parts[2], "%d", &width)
-	fmt.Sscanf(parts[3], "%d", &height)
+	if _, err := fmt.Sscanf(parts[0], "%d", &index); err != nil {
+		return Pane{}, fmt.Errorf("invalid pane index %q: %w", parts[0], err)
+	}
+	fmt.Sscanf(parts[2], "%d", &width)  // zero is acceptable fallback
+	fmt.Sscanf(parts[3], "%d", &height) // zero is acceptable fallback
 
 	return Pane{
 		Index:      index,
@@ -261,9 +274,8 @@ func parsePaneLine(line string) (Pane, error) {
 
 func parseUnixTime(s string) time.Time {
 	var unix int64
-	fmt.Sscanf(s, "%d", &unix)
-	if unix > 0 {
+	if _, err := fmt.Sscanf(s, "%d", &unix); err == nil && unix > 0 {
 		return time.Unix(unix, 0)
 	}
-	return time.Now()
+	return time.Time{}
 }

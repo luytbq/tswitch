@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -13,10 +14,7 @@ import (
 func (m *Model) renderSessionView() string {
 	m.sessionGrid.SetMarks(m.buildMarkMap(true))
 
-	header := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("33")).
-		Bold(true).
-		Render("TMUX Sessions")
+	header := m.styles.HeaderStyle.Render("Sessions")
 
 	return m.renderLayout(header, m.sessionGrid.Render(), m.previewPanel.Render())
 }
@@ -24,43 +22,47 @@ func (m *Model) renderSessionView() string {
 func (m *Model) renderWindowView() string {
 	m.windowGrid.SetMarks(m.buildMarkMap(false))
 
-	header := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("33")).
-		Bold(true).
-		Render(fmt.Sprintf("Windows in: %s", m.currentSess))
+	breadcrumb := m.styles.CardSubtle.Render("Sessions > ")
+	header := m.styles.HeaderStyle.Render(breadcrumb + m.currentSess)
 
 	return m.renderLayout(header, m.windowGrid.Render(), m.previewPanel.Render())
 }
 
 func (m *Model) renderHelp() string {
-	help := `
-TSWITCH - TMUX Navigator
+	s := m.styles
+	var b strings.Builder
 
-Navigation:
-  h/j/k/l or arrows     Move between cards
-  enter                 Zoom in / Switch
-  space                 Quick switch (sessions only)
-  esc                   Back / Quit
-  
-Marks:
-  m + key               Mark current session/window with key
-  key (if marked)       Switch to marked session/window
+	b.WriteString(s.HeaderStyle.Render("TSWITCH - TMUX Session Navigator"))
+	b.WriteString("\n\n")
 
-Management:
-  n                     New session/window (coming soon)
-  r                     Rename (coming soon)
-  x                     Kill (coming soon)
-  t                     Tag session (coming soon)
-  
-Preview:
-  tab                   Toggle preview mode
-  
-Other:
-  /                     Filter (coming soon)
-  ?                     Toggle help
-  q                     Quit
-`
-	return m.styles.HelpStyle.Render(help)
+	// Navigation
+	b.WriteString(s.HelpSection.Render("Navigation"))
+	b.WriteString("\n")
+	writeHelpLine(&b, s, "h/j/k/l, arrows", "Move between cards")
+	writeHelpLine(&b, s, "enter", "Drill into session / Switch to window")
+	writeHelpLine(&b, s, "space", "Quick switch to session")
+	writeHelpLine(&b, s, "esc", "Go back / Quit")
+
+	b.WriteString("\n")
+	b.WriteString(s.HelpSection.Render("Marks"))
+	b.WriteString("\n")
+	writeHelpLine(&b, s, "m + key", "Mark focused item with a key")
+	writeHelpLine(&b, s, "key", "Jump to marked session/window")
+
+	b.WriteString("\n")
+	b.WriteString(s.HelpSection.Render("Preview & Other"))
+	b.WriteString("\n")
+	writeHelpLine(&b, s, "tab", "Toggle preview mode")
+	writeHelpLine(&b, s, "?", "Toggle this help")
+	writeHelpLine(&b, s, "q", "Quit")
+
+	return lipgloss.NewStyle().Padding(1, 2).Render(b.String())
+}
+
+func writeHelpLine(b *strings.Builder, s Styles, key, desc string) {
+	k := s.HelpKey.Render(fmt.Sprintf("  %-18s", key))
+	d := s.HelpDesc.Render(desc)
+	b.WriteString(k + d + "\n")
 }
 
 // ---------------------------------------------------------------------------
@@ -69,23 +71,41 @@ Other:
 
 // renderLayout composes the header + grid|preview + status bar.
 func (m *Model) renderLayout(header, grid, preview string) string {
-	main := lipgloss.JoinHorizontal(lipgloss.Top, grid, preview)
+	main := lipgloss.JoinHorizontal(lipgloss.Top, grid, " ", preview)
 	return lipgloss.JoinVertical(lipgloss.Left, header, main, m.renderStatusBar())
 }
 
 func (m *Model) renderStatusBar() string {
-	var text string
+	s := m.styles
+
+	// Left side: keybind hints (always shown).
+	var hints string
+	if m.currentMode == ModeSessionGrid {
+		hints = "j/k:nav  enter:select  space:quick  m:mark  ?:help  q:quit"
+	} else {
+		hints = "j/k:nav  enter:switch  m:mark  esc:back  ?:help  q:quit"
+	}
+	left := s.StatusHints.Render(hints)
+
+	// Right side: feedback message (if any).
+	var right string
 	switch {
 	case m.markingMode:
-		text = "Press a key to mark (ESC to cancel)"
-	case m.lastErr != "":
-		text = m.lastErr
-	case m.currentMode == ModeSessionGrid:
-		text = "j/k:nav  enter:select  space:quick  m:mark  tab:toggle  ?:help  q:quit"
-	default:
-		text = "j/k:nav  enter:switch  m:mark  esc:back  tab:toggle  ?:help  q:quit"
+		right = s.StatusSuccess.Render("  Press a key to assign mark (ESC to cancel)")
+	case m.statusMessage() != "":
+		msg := m.statusMessage()
+		if m.isStatusError {
+			right = s.StatusError.Render("  " + msg)
+		} else {
+			right = s.StatusSuccess.Render("  " + msg)
+		}
 	}
-	return m.styles.StatusBar.Render(text)
+
+	bar := left + right
+
+	// StatusBar style has Padding(0,1) which is inside Width(),
+	// but no border. So rendered width = Width value exactly.
+	return s.StatusBar.Width(m.width).Render(bar)
 }
 
 // ---------------------------------------------------------------------------
@@ -94,16 +114,29 @@ func (m *Model) renderStatusBar() string {
 
 // buildMarkMap creates a mapping from display-names to mark keys,
 // used by Grid to render mark indicators on cards.
+// When multiple marks target the same item, keys are concatenated (e.g. "a,b").
 func (m *Model) buildMarkMap(forSessions bool) map[string]string {
 	mm := make(map[string]string)
 	if forSessions {
 		for key, mark := range m.config.Marks {
-			mm[mark.SessionName] = key
+			if existing, ok := mm[mark.SessionName]; ok {
+				mm[mark.SessionName] = existing + "," + key
+			} else {
+				mm[mark.SessionName] = key
+			}
 		}
 	} else {
 		for key, mark := range m.config.Marks {
+			// Only show marks that belong to the currently viewed session.
+			if mark.SessionName != m.currentSess {
+				continue
+			}
 			displayName := fmt.Sprintf("%d: %s", mark.WindowIndex, m.windowName(mark.WindowIndex))
-			mm[displayName] = key
+			if existing, ok := mm[displayName]; ok {
+				mm[displayName] = existing + "," + key
+			} else {
+				mm[displayName] = key
+			}
 		}
 	}
 	return mm

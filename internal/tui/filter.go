@@ -12,17 +12,13 @@ func FilterSessions(sessions []tmux.Session, term string) []tmux.Session {
 	}
 
 	names := make([]string, len(sessions))
-	byName := make(map[string]tmux.Session, len(sessions))
 	for i, s := range sessions {
 		names[i] = s.Name
-		byName[s.Name] = s
 	}
 
 	var out []tmux.Session
 	for _, m := range fuzzy.Find(term, names) {
-		if s, ok := byName[m.Str]; ok {
-			out = append(out, s)
-		}
+		out = append(out, sessions[m.Index])
 	}
 	return out
 }
@@ -34,17 +30,13 @@ func FilterWindows(windows []tmux.Window, term string) []tmux.Window {
 	}
 
 	names := make([]string, len(windows))
-	byName := make(map[string]tmux.Window, len(windows))
 	for i, w := range windows {
 		names[i] = w.Name
-		byName[w.Name] = w
 	}
 
 	var out []tmux.Window
 	for _, m := range fuzzy.Find(term, names) {
-		if w, ok := byName[m.Str]; ok {
-			out = append(out, w)
-		}
+		out = append(out, windows[m.Index])
 	}
 	return out
 }

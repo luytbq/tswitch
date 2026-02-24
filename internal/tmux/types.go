@@ -14,6 +14,7 @@ type Service interface {
 	CapturePane(sessionName string, windowIndex int, paneIndex int) (string, error)
 
 	// Navigation
+	SwitchToSession(sessionName string) error
 	SwitchClient(sessionName string, windowIndex int) error
 	AttachSession(sessionName string) error
 
