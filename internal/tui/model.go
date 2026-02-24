@@ -5,6 +5,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/user/tswitch/internal/config"
 	"github.com/user/tswitch/internal/keys"
 	"github.com/user/tswitch/internal/tmux"
@@ -41,6 +42,8 @@ type Model struct {
 	markingTarget string // "session" or "window"
 	filterMode    bool   // search input is active
 	filterQuery   string // current fuzzy-search term
+	dialog        *Dialog
+	pendingAction dialogAction
 
 	// Viewport.
 	width  int
@@ -107,6 +110,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View implements tea.Model.
 func (m *Model) View() string {
+	if m.dialog != nil {
+		return lipgloss.Place(m.width, m.height,
+			lipgloss.Center, lipgloss.Center,
+			m.dialog.Render(m.width, m.height))
+	}
 	if m.helpShown {
 		return m.renderHelp()
 	}
@@ -125,6 +133,11 @@ func (m *Model) View() string {
 
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	keyStr := msg.String()
+
+	// Dialog intercepts all keys.
+	if m.dialog != nil {
+		return m.handleDialogKey(msg)
+	}
 
 	// Filter mode intercepts all keys.
 	if m.filterMode {
@@ -156,6 +169,15 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keys.ActionFilter:
 		m.enterFilterMode()
+
+	case keys.ActionNew:
+		return m.handleNew()
+
+	case keys.ActionRename:
+		return m.handleRename()
+
+	case keys.ActionKill:
+		return m.handleKill()
 
 	case keys.ActionMoveUp:
 		m.moveFocus(0, -1)

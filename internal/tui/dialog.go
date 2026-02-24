@@ -45,30 +45,35 @@ func NewInputDialog(title, message, defaultValue string, styles Styles) *Dialog 
 }
 
 // Render returns the dialog overlay string.
-func (d *Dialog) Render(width, height int) string {
-	const dialogWidth = 40
+func (d *Dialog) Render(_, _ int) string {
+	const dialogWidth = 44
+
+	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("33")).Render(d.Title)
 
 	var body string
 	switch d.Kind {
 	case DialogConfirm:
-		opts := ""
+		var opts string
 		for i, opt := range d.Options {
 			s := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 			if i == d.SelectedIdx {
 				s = lipgloss.NewStyle().Foreground(lipgloss.Color("33")).Bold(true).Underline(true)
 			}
-			opts += " " + s.Render(opt)
+			opts += "  " + s.Render(opt)
 		}
-		body = d.Message + "\n\n" + opts
+		hint := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("  (y/n · ←/→ · enter)")
+		body = title + "\n\n" + d.Message + "\n\n" + opts + "\n" + hint
 
 	case DialogInput:
-		body = d.Message + "\n\n> " + d.Input
+		cursor := lipgloss.NewStyle().Foreground(lipgloss.Color("33")).Render("█")
+		hint := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("enter: confirm · esc: cancel")
+		body = title + "\n\n" + d.Message + "\n\n> " + d.Input + cursor + "\n\n" + hint
 	}
 
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("39")).
-		Padding(1).
+		Padding(1, 2).
 		Width(dialogWidth).
 		Render(body)
 }

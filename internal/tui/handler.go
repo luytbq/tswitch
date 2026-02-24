@@ -2,11 +2,234 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/tswitch/internal/config"
 	"github.com/user/tswitch/internal/keys"
 )
+
+// ---------------------------------------------------------------------------
+// Session / window management
+// ---------------------------------------------------------------------------
+
+type dialogAction int
+
+const (
+	dialogNone          dialogAction = iota
+	dialogNewSession                 // input → tmux new-session
+	dialogRenameSession              // input → tmux rename-session
+	dialogKillSession                // confirm → tmux kill-session
+	dialogNewWindow                  // input → tmux new-window
+	dialogRenameWindow               // input → tmux rename-window
+	dialogKillWindow                 // confirm → tmux kill-window
+)
+
+func (m *Model) handleNew() (tea.Model, tea.Cmd) {
+	switch m.currentMode {
+	case ModeSessionGrid:
+		m.dialog = NewInputDialog("New Session", "Session name:", "", m.styles)
+		m.pendingAction = dialogNewSession
+	case ModeWindowGrid:
+		m.dialog = NewInputDialog("New Window", "Window name:", "", m.styles)
+		m.pendingAction = dialogNewWindow
+	}
+	return m, nil
+}
+
+func (m *Model) handleRename() (tea.Model, tea.Cmd) {
+	switch m.currentMode {
+	case ModeSessionGrid:
+		card, ok := m.sessionGrid.GetFocused().(SessionCard)
+		if !ok {
+			return m, nil
+		}
+		m.dialog = NewInputDialog("Rename Session", "New name:", card.session.Name, m.styles)
+		m.pendingAction = dialogRenameSession
+	case ModeWindowGrid:
+		card, ok := m.windowGrid.GetFocused().(WindowCard)
+		if !ok {
+			return m, nil
+		}
+		m.dialog = NewInputDialog("Rename Window", "New name:", card.window.Name, m.styles)
+		m.pendingAction = dialogRenameWindow
+	}
+	return m, nil
+}
+
+func (m *Model) handleKill() (tea.Model, tea.Cmd) {
+	switch m.currentMode {
+	case ModeSessionGrid:
+		card, ok := m.sessionGrid.GetFocused().(SessionCard)
+		if !ok {
+			return m, nil
+		}
+		m.dialog = NewConfirmDialog("Kill Session",
+			fmt.Sprintf("Kill session %q?", card.session.Name), m.styles)
+		m.pendingAction = dialogKillSession
+	case ModeWindowGrid:
+		card, ok := m.windowGrid.GetFocused().(WindowCard)
+		if !ok {
+			return m, nil
+		}
+		m.dialog = NewConfirmDialog("Kill Window",
+			fmt.Sprintf("Kill window %q?", card.window.Name), m.styles)
+		m.pendingAction = dialogKillWindow
+	}
+	return m, nil
+}
+
+// ---------------------------------------------------------------------------
+// Dialog key handling
+// ---------------------------------------------------------------------------
+
+func (m *Model) handleDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	d := m.dialog
+	switch d.Kind {
+	case DialogInput:
+		switch msg.String() {
+		case "esc":
+			m.dialog = nil
+		case "enter":
+			return m.submitDialog()
+		case "backspace":
+			if len(d.Input) > 0 {
+				runes := []rune(d.Input)
+				d.Input = string(runes[:len(runes)-1])
+			}
+		default:
+			if msg.Type == tea.KeyRunes {
+				d.Input += msg.String()
+			}
+		}
+
+	case DialogConfirm:
+		switch msg.String() {
+		case "esc":
+			m.dialog = nil
+		case "y":
+			d.SelectedIdx = 0
+			return m.submitDialog()
+		case "n":
+			m.dialog = nil
+		case "enter":
+			return m.submitDialog()
+		case "left", "h", "right", "l":
+			if len(d.Options) == 2 {
+				d.SelectedIdx = 1 - d.SelectedIdx
+			}
+		}
+	}
+	return m, nil
+}
+
+func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
+	d := m.dialog
+	action := m.pendingAction
+	m.dialog = nil
+	m.pendingAction = dialogNone
+
+	switch action {
+	case dialogNewSession:
+		name := strings.TrimSpace(d.Input)
+		if name == "" {
+			m.setStatusError("session name cannot be empty")
+			return m, nil
+		}
+		if err := m.tmux.NewSession(name); err != nil {
+			m.setStatusError(err.Error())
+		} else {
+			m.setStatus("Created: " + name)
+			_ = m.loadSessions()
+			m.applyFilter()
+		}
+
+	case dialogRenameSession:
+		card, ok := m.sessionGrid.GetFocused().(SessionCard)
+		if !ok {
+			return m, nil
+		}
+		name := strings.TrimSpace(d.Input)
+		if name == "" {
+			m.setStatusError("session name cannot be empty")
+			return m, nil
+		}
+		if err := m.tmux.RenameSession(card.session.Name, name); err != nil {
+			m.setStatusError(err.Error())
+		} else {
+			m.setStatus("Renamed to: " + name)
+			_ = m.loadSessions()
+			m.applyFilter()
+		}
+
+	case dialogKillSession:
+		if d.SelectedIdx != 0 {
+			return m, nil // "No" selected
+		}
+		card, ok := m.sessionGrid.GetFocused().(SessionCard)
+		if !ok {
+			return m, nil
+		}
+		name := card.session.Name
+		if err := m.tmux.KillSession(name); err != nil {
+			m.setStatusError(err.Error())
+		} else {
+			m.setStatus("Killed: " + name)
+			_ = m.loadSessions()
+			m.applyFilter()
+		}
+
+	case dialogNewWindow:
+		name := strings.TrimSpace(d.Input)
+		if name == "" {
+			m.setStatusError("window name cannot be empty")
+			return m, nil
+		}
+		if err := m.tmux.NewWindow(m.currentSess, name); err != nil {
+			m.setStatusError(err.Error())
+		} else {
+			m.setStatus("Created: " + name)
+			_ = m.loadWindows(m.currentSess)
+			m.applyFilter()
+		}
+
+	case dialogRenameWindow:
+		card, ok := m.windowGrid.GetFocused().(WindowCard)
+		if !ok {
+			return m, nil
+		}
+		name := strings.TrimSpace(d.Input)
+		if name == "" {
+			m.setStatusError("window name cannot be empty")
+			return m, nil
+		}
+		if err := m.tmux.RenameWindow(m.currentSess, card.window.Index, name); err != nil {
+			m.setStatusError(err.Error())
+		} else {
+			m.setStatus("Renamed to: " + name)
+			_ = m.loadWindows(m.currentSess)
+			m.applyFilter()
+		}
+
+	case dialogKillWindow:
+		if d.SelectedIdx != 0 {
+			return m, nil // "No" selected
+		}
+		card, ok := m.windowGrid.GetFocused().(WindowCard)
+		if !ok {
+			return m, nil
+		}
+		winName := card.window.Name
+		if err := m.tmux.KillWindow(m.currentSess, card.window.Index); err != nil {
+			m.setStatusError(err.Error())
+		} else {
+			m.setStatus("Killed: " + winName)
+			_ = m.loadWindows(m.currentSess)
+			m.applyFilter()
+		}
+	}
+	return m, nil
+}
 
 // ---------------------------------------------------------------------------
 // Filter / Search

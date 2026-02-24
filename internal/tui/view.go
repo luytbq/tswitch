@@ -50,6 +50,13 @@ func (m *Model) renderHelp() string {
 	writeHelpLine(&b, s, "key", "Jump to marked session/window")
 
 	b.WriteString("\n")
+	b.WriteString(s.HelpSection.Render("Management"))
+	b.WriteString("\n")
+	writeHelpLine(&b, s, "n", "New session / window")
+	writeHelpLine(&b, s, "r", "Rename session / window")
+	writeHelpLine(&b, s, "x", "Kill session / window")
+
+	b.WriteString("\n")
 	b.WriteString(s.HelpSection.Render("Search & UI"))
 	b.WriteString("\n")
 	writeHelpLine(&b, s, "/", "Search (fuzzy filter)")
@@ -89,9 +96,9 @@ func (m *Model) renderStatusBar() string {
 	// Left side: keybind hints (always shown).
 	var hints string
 	if m.currentMode == ModeSessionGrid {
-		hints = "j/k:nav  enter:select  space:quick  /:search  m:mark  ?:help  q:quit"
+		hints = "j/k:nav  enter:select  space:quick  /:search  n:new  r:rename  x:kill  m:mark  ?:help  q:quit"
 	} else {
-		hints = "j/k:nav  enter:switch  /:search  m:mark  esc:back  ?:help  q:quit"
+		hints = "j/k:nav  enter:switch  /:search  n:new  r:rename  x:kill  m:mark  esc:back  ?:help  q:quit"
 	}
 	left := s.StatusHints.Render(hints)
 
