@@ -50,8 +50,9 @@ func (m *Model) renderHelp() string {
 	writeHelpLine(&b, s, "key", "Jump to marked session/window")
 
 	b.WriteString("\n")
-	b.WriteString(s.HelpSection.Render("Preview & Other"))
+	b.WriteString(s.HelpSection.Render("Search & UI"))
 	b.WriteString("\n")
+	writeHelpLine(&b, s, "/", "Search (fuzzy filter)")
 	writeHelpLine(&b, s, "tab", "Toggle preview mode")
 	writeHelpLine(&b, s, "?", "Toggle this help")
 	writeHelpLine(&b, s, "q", "Quit")
@@ -78,18 +79,27 @@ func (m *Model) renderLayout(header, grid, preview string) string {
 func (m *Model) renderStatusBar() string {
 	s := m.styles
 
+	// Filter mode: show the search prompt, suppress other content.
+	if m.filterMode {
+		prompt := s.StatusHints.Render("/") + " " + s.StatusSuccess.Render(m.filterQuery+"█")
+		hint := s.StatusHints.Render("  esc:clear  enter:keep")
+		return s.StatusBar.Width(m.width).Render(prompt + hint)
+	}
+
 	// Left side: keybind hints (always shown).
 	var hints string
 	if m.currentMode == ModeSessionGrid {
-		hints = "j/k:nav  enter:select  space:quick  m:mark  ?:help  q:quit"
+		hints = "j/k:nav  enter:select  space:quick  /:search  m:mark  ?:help  q:quit"
 	} else {
-		hints = "j/k:nav  enter:switch  m:mark  esc:back  ?:help  q:quit"
+		hints = "j/k:nav  enter:switch  /:search  m:mark  esc:back  ?:help  q:quit"
 	}
 	left := s.StatusHints.Render(hints)
 
-	// Right side: feedback message (if any).
+	// Right side: active filter indicator or feedback message.
 	var right string
 	switch {
+	case m.filterQuery != "":
+		right = s.StatusSuccess.Render("  /" + m.filterQuery)
 	case m.markingMode:
 		right = s.StatusSuccess.Render("  Press a key to assign mark (ESC to cancel)")
 	case m.statusMessage() != "":

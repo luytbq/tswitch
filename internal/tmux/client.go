@@ -101,6 +101,26 @@ func (c *Client) ListWindows(sessionName string) ([]Window, error) {
 	return windows, nil
 }
 
+// ListAllWindowNames returns a map of session name -> window names by querying
+// all sessions at once with list-windows -a.
+func (c *Client) ListAllWindowNames() (map[string][]string, error) {
+	output, err := c.exec.Run("list-windows", "-a", "-F", "#{session_name}|#{window_name}")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list all windows: %w", err)
+	}
+
+	result := make(map[string][]string)
+	for _, line := range splitLines(output) {
+		parts := strings.Split(line, "|")
+		if len(parts) < 2 {
+			continue
+		}
+		sessName, winName := parts[0], parts[1]
+		result[sessName] = append(result[sessName], winName)
+	}
+	return result, nil
+}
+
 func (c *Client) ListPanes(sessionName string, windowIndex int) ([]Pane, error) {
 	target := fmt.Sprintf("%s:%d", sessionName, windowIndex)
 	output, err := c.exec.Run("list-panes", "-t", target, "-F",

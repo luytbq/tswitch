@@ -10,6 +10,7 @@ type Service interface {
 	IsInTmux() bool
 	ListSessions() ([]Session, error)
 	ListWindows(sessionName string) ([]Window, error)
+	ListAllWindowNames() (map[string][]string, error) // session -> window names
 	ListPanes(sessionName string, windowIndex int) ([]Pane, error)
 	CapturePane(sessionName string, windowIndex int, paneIndex int) (string, error)
 

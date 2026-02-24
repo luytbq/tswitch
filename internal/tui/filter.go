@@ -5,19 +5,27 @@ import (
 	"github.com/user/tswitch/internal/tmux"
 )
 
-// FilterSessions returns sessions whose names fuzzy-match term.
-func FilterSessions(sessions []tmux.Session, term string) []tmux.Session {
+// FilterSessions returns sessions whose names, or any of their window names,
+// fuzzy-match term. windowsBySession may be nil (session-name-only match).
+func FilterSessions(sessions []tmux.Session, term string, windowsBySession map[string][]string) []tmux.Session {
 	if term == "" {
 		return sessions
 	}
 
-	names := make([]string, len(sessions))
+	// Build search strings: "sessionName windowName1 windowName2 ..."
+	// Fuzzy matching against the combined string lets a query like "vim"
+	// surface sessions that have a window named "vim".
+	searchStrings := make([]string, len(sessions))
 	for i, s := range sessions {
-		names[i] = s.Name
+		combined := s.Name
+		for _, wn := range windowsBySession[s.Name] {
+			combined += " " + wn
+		}
+		searchStrings[i] = combined
 	}
 
 	var out []tmux.Session
-	for _, m := range fuzzy.Find(term, names) {
+	for _, m := range fuzzy.Find(term, searchStrings) {
 		out = append(out, sessions[m.Index])
 	}
 	return out

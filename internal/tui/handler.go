@@ -9,6 +9,39 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// Filter / Search
+// ---------------------------------------------------------------------------
+
+func (m *Model) enterFilterMode() {
+	m.filterMode = true
+	m.filterQuery = ""
+	m.applyFilter()
+}
+
+func (m *Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.filterMode = false
+		m.filterQuery = ""
+		m.applyFilter()
+	case "enter":
+		m.filterMode = false
+	case "backspace":
+		if len(m.filterQuery) > 0 {
+			runes := []rune(m.filterQuery)
+			m.filterQuery = string(runes[:len(runes)-1])
+			m.applyFilter()
+		}
+	default:
+		if msg.Type == tea.KeyRunes {
+			m.filterQuery += msg.String()
+			m.applyFilter()
+		}
+	}
+	return m, nil
+}
+
+// ---------------------------------------------------------------------------
 // Navigation
 // ---------------------------------------------------------------------------
 
@@ -28,6 +61,8 @@ func (m *Model) handleBack() (tea.Model, tea.Cmd) {
 	case m.helpShown:
 		m.helpShown = false
 	case m.currentMode == ModeWindowGrid:
+		m.resetFilter()
+		m.applyFilter()
 		m.currentMode = ModeSessionGrid
 		m.syncPreview()
 	default:
@@ -47,6 +82,7 @@ func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 		if err := m.loadWindows(card.session.Name); err != nil {
 			m.setStatusError(err.Error())
 		} else {
+			m.resetFilter()
 			m.currentMode = ModeWindowGrid
 		}
 

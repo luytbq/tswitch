@@ -31,13 +31,16 @@ type Model struct {
 	previewPanel *PreviewPanel
 
 	// State.
-	currentMode   Mode
-	sessions      []tmux.Session
-	windows       []tmux.Window
-	currentSess   string // session name when in window view
+	currentMode      Mode
+	sessions         []tmux.Session
+	windows          []tmux.Window
+	currentSess      string // session name when in window view
+	windowsBySession map[string][]string // session -> window names (for search)
 	helpShown     bool
 	markingMode   bool   // waiting for a mark-key press
 	markingTarget string // "session" or "window"
+	filterMode    bool   // search input is active
+	filterQuery   string // current fuzzy-search term
 
 	// Viewport.
 	width  int
@@ -123,6 +126,11 @@ func (m *Model) View() string {
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	keyStr := msg.String()
 
+	// Filter mode intercepts all keys.
+	if m.filterMode {
+		return m.handleFilterKey(msg)
+	}
+
 	// Marking mode intercepts all keys.
 	if m.markingMode {
 		return m.handleMarkAssignment(keyStr)
@@ -145,6 +153,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keys.ActionStartMark:
 		m.enterMarkingMode()
+
+	case keys.ActionFilter:
+		m.enterFilterMode()
 
 	case keys.ActionMoveUp:
 		m.moveFocus(0, -1)
@@ -182,6 +193,11 @@ func (m *Model) loadSessions() error {
 	}
 	m.sessions = sessions
 
+	// Pre-fetch all window names so session filtering can match against them.
+	if wbs, err := m.tmux.ListAllWindowNames(); err == nil {
+		m.windowsBySession = wbs
+	}
+
 	items := make([]GridItem, len(sessions))
 	for i, s := range sessions {
 		items[i] = SessionCard{s}
@@ -208,6 +224,34 @@ func (m *Model) loadWindows(sessionName string) error {
 		m.previewPanel.SetWindowMetadata(m.windows[0])
 	}
 	return nil
+}
+
+// applyFilter re-filters the current mode's items from the full list and
+// updates the grid. Called whenever filterQuery changes.
+func (m *Model) applyFilter() {
+	switch m.currentMode {
+	case ModeSessionGrid:
+		filtered := FilterSessions(m.sessions, m.filterQuery, m.windowsBySession)
+		items := make([]GridItem, len(filtered))
+		for i, s := range filtered {
+			items[i] = SessionCard{s}
+		}
+		m.sessionGrid.SetItems(items)
+	case ModeWindowGrid:
+		filtered := FilterWindows(m.windows, m.filterQuery)
+		items := make([]GridItem, len(filtered))
+		for i, w := range filtered {
+			items[i] = WindowCard{w}
+		}
+		m.windowGrid.SetItems(items)
+	}
+	m.syncPreview()
+}
+
+// resetFilter clears filter state without updating the grid (caller must do it).
+func (m *Model) resetFilter() {
+	m.filterMode = false
+	m.filterQuery = ""
 }
 
 // ---------------------------------------------------------------------------
