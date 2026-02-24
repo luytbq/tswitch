@@ -308,6 +308,14 @@ func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 		if !ok {
 			return m, nil
 		}
+		// Single-window session: switch immediately instead of drilling in.
+		if card.session.WindowCount == 1 {
+			if err := m.tmux.SwitchToSession(card.session.Name); err != nil {
+				m.setStatusError(err.Error())
+				return m, nil
+			}
+			return m, tea.Quit
+		}
 		if err := m.loadWindows(card.session.Name); err != nil {
 			m.setStatusError(err.Error())
 		} else {

@@ -14,18 +14,21 @@ import (
 func (m *Model) renderSessionView() string {
 	m.sessionGrid.SetMarks(m.buildMarkMap(true))
 
-	header := m.styles.HeaderStyle.Render("Sessions")
+	count := len(m.sessionGrid.Items())
+	header := m.styles.HeaderStyle.Render(fmt.Sprintf("Sessions (%d)", count))
+	separator := m.styles.CardSubtle.Render(strings.Repeat("─", m.width))
 
-	return m.renderLayout(header, m.sessionGrid.Render(), m.previewPanel.Render())
+	return m.renderLayout(header, separator, m.sessionGrid.Render(), m.previewPanel.Render())
 }
 
 func (m *Model) renderWindowView() string {
 	m.windowGrid.SetMarks(m.buildMarkMap(false))
 
-	breadcrumb := m.styles.CardSubtle.Render("Sessions > ")
-	header := m.styles.HeaderStyle.Render(breadcrumb + m.currentSess)
+	count := len(m.windowGrid.Items())
+	header := m.styles.HeaderStyle.Render(fmt.Sprintf("Sessions › %s (%d)", m.currentSess, count))
+	separator := m.styles.CardSubtle.Render(strings.Repeat("─", m.width))
 
-	return m.renderLayout(header, m.windowGrid.Render(), m.previewPanel.Render())
+	return m.renderLayout(header, separator, m.windowGrid.Render(), m.previewPanel.Render())
 }
 
 func (m *Model) renderHelp() string {
@@ -79,16 +82,16 @@ func writeHelpLine(b *strings.Builder, s Styles, key, desc string) {
 // Layout helpers
 // ---------------------------------------------------------------------------
 
-// renderLayout composes the header + grid|preview + status bar.
+// renderLayout composes the header + separator + grid|preview + status bar.
 // The grid is padded to the actual width used by cards (not the full
 // allocated width) so the preview sits snugly next to the grid.
 // The final output is clamped to the terminal height to prevent overflow.
-func (m *Model) renderLayout(header, grid, preview string) string {
+func (m *Model) renderLayout(header, separator, grid, preview string) string {
 	usedW := m.activeGrid().UsedWidth()
 	paddedGrid := lipgloss.NewStyle().Width(usedW).Render(grid)
 	main := lipgloss.JoinHorizontal(lipgloss.Top, paddedGrid, " ", preview)
 
-	full := lipgloss.JoinVertical(lipgloss.Left, header, main, m.renderStatusBar())
+	full := lipgloss.JoinVertical(lipgloss.Left, header, separator, main, m.renderStatusBar())
 
 	// Clamp output to terminal height so long preview content doesn't push
 	// the grid off-screen.
@@ -109,14 +112,16 @@ func (m *Model) renderStatusBar() string {
 		return s.StatusBar.Width(m.width).Render(prompt + hint)
 	}
 
-	// Left side: keybind hints (always shown).
-	var hints string
+	// Left side: mode label + keybind hints.
+	var modeLabel, hints string
 	if m.currentMode == ModeSessionGrid {
-		hints = "j/k:nav  J/K:reorder  enter:select  space:quick  /:search  n:new  r:rename  x:kill  m:mark  f:browse  ?:help  q:quit"
+		modeLabel = s.StatusMode.Render("SESSIONS")
+		hints = " hjkl:nav  enter:select  space:quick  /:search  n:new  r:rename  x:kill  m:mark  f:browse  ?:help  q:quit"
 	} else {
-		hints = "j/k:nav  J/K:reorder  enter:switch  /:search  n:new  r:rename  x:kill  m:mark  f:browse  esc:back  ?:help  q:quit"
+		modeLabel = s.StatusMode.Render("WINDOWS")
+		hints = " hjkl:nav  enter:switch  /:search  n:new  r:rename  x:kill  m:mark  esc:back  ?:help  q:quit"
 	}
-	left := s.StatusHints.Render(hints)
+	left := modeLabel + s.StatusHints.Render(hints)
 
 	// Right side: active filter indicator or feedback message.
 	var right string

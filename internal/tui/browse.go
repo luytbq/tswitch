@@ -109,7 +109,17 @@ func BuildBrowseCommand(appCfg *config.AppConfig) (shellCmd string, tmpPath stri
 
 // SwitchOrCreateSession creates a new tmux session in the given directory
 // (if one doesn't already exist) and switches to it.
+// It first checks if a session with the raw directory basename exists (to
+// handle names containing dots/spaces that NormalizeSessionName would alter).
 func SwitchOrCreateSession(svc tmux.Service, dir string) error {
+	rawName := filepath.Base(dir)
+
+	// Prefer exact basename match with existing session.
+	if rawName != "" && svc.HasSession(rawName) {
+		return svc.SwitchToSession(rawName)
+	}
+
+	// Fall back to normalized name.
 	name := NormalizeSessionName(dir)
 	if name == "" {
 		return fmt.Errorf("could not derive session name from path")
@@ -120,11 +130,7 @@ func SwitchOrCreateSession(svc tmux.Service, dir string) error {
 			return fmt.Errorf("failed to create session: %w", err)
 		}
 	}
-
-	if err := svc.SwitchToSession(name); err != nil {
-		return fmt.Errorf("failed to switch: %w", err)
-	}
-	return nil
+	return svc.SwitchToSession(name)
 }
 
 // NormalizeSessionName derives a valid tmux session name from a directory path.

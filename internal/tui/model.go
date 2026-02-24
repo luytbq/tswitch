@@ -396,7 +396,7 @@ func (m *Model) layoutSizes() (gridW, gridH, previewContentW, previewH int) {
 		gridW = 1
 	}
 
-	bodyH := m.height - 2 // header(1) + statusbar(1)
+	bodyH := m.height - 3 // header(1) + separator(1) + statusbar(1)
 	if bodyH < 1 {
 		bodyH = 1
 	}

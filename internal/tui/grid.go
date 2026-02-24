@@ -9,10 +9,11 @@ import (
 // Grid layout constants.
 const (
 	minCardContentW    = 16 // minimum card content width; cards expand beyond this
-	cardGap            = 1  // space between cards (right-side breathing room)
+	cardGap            = 2  // space between cards (right-side breathing room)
 	cardBorderPadding  = 4  // border-left(1) + pad-left(1) + pad-right(1) + border-right(1)
 	cardContentLines   = 2  // title line + subtitle line
 	cardRenderedHeight = cardContentLines + 2 // content lines + border top/bottom
+	cardRowGap         = 1  // blank lines between rows
 )
 
 // GridItem represents an item that can be displayed in a grid card.
@@ -156,7 +157,8 @@ func (g *Grid) Render() string {
 	g.recalculate()
 	g.ensureVisible()
 
-	visibleRows := g.height / cardRenderedHeight
+	effectiveRowH := cardRenderedHeight + cardRowGap
+	visibleRows := g.height / effectiveRowH
 	if visibleRows < 1 {
 		visibleRows = 1
 	}
@@ -175,7 +177,8 @@ func (g *Grid) Render() string {
 		lines = append(lines, lipgloss.JoinHorizontal(lipgloss.Top, rowCards...))
 	}
 
-	return strings.Join(lines, "\n")
+	rowSep := "\n" + strings.Repeat("\n", cardRowGap)
+	return strings.Join(lines, rowSep)
 }
 
 // ---------------------------------------------------------------------------
@@ -200,7 +203,8 @@ func (g *Grid) recalculate() {
 
 func (g *Grid) ensureVisible() {
 	focusRow := g.focusIndex / g.columns
-	visibleRows := g.height / cardRenderedHeight
+	effectiveRowH := cardRenderedHeight + cardRowGap
+	visibleRows := g.height / effectiveRowH
 	if visibleRows < 1 {
 		visibleRows = 1
 	}
@@ -243,15 +247,28 @@ func (g *Grid) renderCard(item GridItem, focused bool) string {
 		displayTitle = displayTitle[:maxTitleLen-3] + "..."
 	}
 
+	// Select styles based on focus state.
+	titleStyle := g.styles.CardTitle
+	subtitleStyle := g.styles.CardSubtle
+	attachedStyle := g.styles.CardAttached
+	markStyle := g.styles.MarkBadge
+	if focused {
+		bg := lipgloss.Color("236")
+		titleStyle = g.styles.CardFocusedTitle
+		subtitleStyle = g.styles.CardSubtle.Copy().Background(bg)
+		attachedStyle = g.styles.CardAttached.Copy().Background(bg)
+		markStyle = g.styles.MarkBadge.Copy().Background(bg)
+	}
+
 	// Build the title line with indicator and mark badge.
-	titleRendered := g.styles.CardTitle.Render(displayTitle)
+	titleRendered := titleStyle.Render(displayTitle)
 	if indicator != "" {
-		titleRendered = g.styles.CardAttached.Render(indicator) + " " + titleRendered
+		titleRendered = attachedStyle.Render(indicator) + " " + titleRendered
 	}
 
 	// Build the full first line: title on the left, mark badge on the right.
 	if hasMark {
-		badge := g.styles.MarkBadge.Render("[" + markKey + "]")
+		badge := markStyle.Render("[" + markKey + "]")
 		titleWidth := lipgloss.Width(titleRendered)
 		badgeWidth := lipgloss.Width(badge)
 		gap := contentW - titleWidth - badgeWidth
@@ -261,7 +278,7 @@ func (g *Grid) renderCard(item GridItem, focused bool) string {
 		titleRendered = titleRendered + strings.Repeat(" ", gap) + badge
 	}
 
-	subtitleRendered := g.styles.CardSubtle.Render(subtitle)
+	subtitleRendered := subtitleStyle.Render(subtitle)
 	content := titleRendered + "\n" + subtitleRendered
 
 	// Apply dynamic width: border(2) + padding(2) + contentW.

@@ -16,12 +16,12 @@ func (c SessionCard) Title() string {
 }
 
 func (c SessionCard) Subtitle() string {
-	return fmt.Sprintf("%d wins  %s", c.session.WindowCount, formatTimeSince(c.session.LastActive))
+	return fmt.Sprintf("%d wins · %s", c.session.WindowCount, formatTimeSince(c.session.LastActive))
 }
 
 func (c SessionCard) Indicator() string {
 	if c.session.Attached {
-		return "*"
+		return "●"
 	}
 	return ""
 }
@@ -46,14 +46,14 @@ func (c WindowCard) Subtitle() string {
 		if idx := lastIndexByte(dir, '/'); idx >= 0 && idx < len(dir)-1 {
 			dir = dir[idx+1:]
 		}
-		info += "  " + dir
+		info += " · " + dir
 	}
 	return info
 }
 
 func (c WindowCard) Indicator() string {
 	if c.window.Active {
-		return "*"
+		return "●"
 	}
 	return ""
 }

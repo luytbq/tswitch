@@ -8,6 +8,7 @@ type Styles struct {
 	CardStyle        lipgloss.Style
 	CardFocusedStyle lipgloss.Style
 	CardTitle        lipgloss.Style
+	CardFocusedTitle lipgloss.Style
 	CardSubtle       lipgloss.Style
 	CardAttached     lipgloss.Style
 	MarkBadge        lipgloss.Style
@@ -21,6 +22,7 @@ type Styles struct {
 	StatusHints   lipgloss.Style
 	StatusSuccess lipgloss.Style
 	StatusError   lipgloss.Style
+	StatusMode    lipgloss.Style
 
 	// Header
 	HeaderStyle lipgloss.Style
@@ -40,52 +42,61 @@ func NewStyles() Styles {
 	return Styles{
 		CardStyle: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("240")).
+			BorderForeground(lipgloss.Color("238")).
 			Padding(0, 1),
 
 		CardFocusedStyle: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("39")).
+			BorderForeground(lipgloss.Color("75")).
 			Padding(0, 1),
 
 		CardTitle: lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("33")),
+			Foreground(lipgloss.Color("75")),
+
+		CardFocusedTitle: lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("75")).
+			Background(lipgloss.Color("236")),
 
 		CardSubtle: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("243")),
+			Foreground(lipgloss.Color("245")),
 
 		CardAttached: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("42")).
+			Foreground(lipgloss.Color("114")).
 			Bold(true),
 
 		MarkBadge: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("228")).
+			Foreground(lipgloss.Color("222")).
 			Bold(true),
 
 		PreviewBorder: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("240")),
+			BorderForeground(lipgloss.Color("238")),
 
 		PreviewTitle: lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("33")),
+			Foreground(lipgloss.Color("75")),
 
 		StatusBar: lipgloss.NewStyle().
-			Background(lipgloss.Color("235")).
+			Background(lipgloss.Color("236")).
 			Padding(0, 1),
 
 		StatusHints: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("243")),
+			Foreground(lipgloss.Color("245")),
 
 		StatusSuccess: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("42")),
+			Foreground(lipgloss.Color("114")),
 
 		StatusError: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("196")),
+			Foreground(lipgloss.Color("168")),
+
+		StatusMode: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("114")).
+			Bold(true),
 
 		HeaderStyle: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("33")).
+			Foreground(lipgloss.Color("75")).
 			Bold(true).
 			PaddingLeft(1),
 
@@ -93,19 +104,19 @@ func NewStyles() Styles {
 			Padding(1, 2),
 
 		HelpKey: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("33")).
+			Foreground(lipgloss.Color("75")).
 			Bold(true),
 
 		HelpSection: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("39")).
+			Foreground(lipgloss.Color("114")).
 			Bold(true).
 			MarginTop(1),
 
 		HelpDesc: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("248")),
+			Foreground(lipgloss.Color("250")),
 
 		BorderStyle: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("240")),
+			BorderForeground(lipgloss.Color("238")),
 	}
 }
