@@ -35,6 +35,7 @@ type Grid struct {
 	columns      int
 	rows         int
 	cardContentW int            // computed per-card content width
+	usedWidth    int            // actual width used by card columns
 	scrollOffset int
 	styles       Styles
 	markMap      map[string]string // item key -> mark key
@@ -121,6 +122,11 @@ func (g *Grid) Items() []GridItem {
 	return g.items
 }
 
+// UsedWidth returns the actual width consumed by card columns.
+func (g *Grid) UsedWidth() int {
+	return g.usedWidth
+}
+
 // FocusFirstWhere moves focus to the first item satisfying match.
 // Does nothing if no item matches.
 func (g *Grid) FocusFirstWhere(match func(GridItem) bool) {
@@ -184,6 +190,7 @@ func (g *Grid) recalculate() {
 	if g.cardContentW < minCardContentW {
 		g.cardContentW = minCardContentW
 	}
+	g.usedWidth = g.columns * (g.cardContentW + cardBorderPadding + cardGap)
 	if len(g.items) > 0 {
 		g.rows = (len(g.items) + g.columns - 1) / g.columns
 	} else {
