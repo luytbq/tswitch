@@ -247,14 +247,15 @@ func (g *Grid) renderCard(item GridItem, focused bool) string {
 		displayTitle = displayTitle[:maxTitleLen-3] + "..."
 	}
 
-	// Select styles based on focus state.
+	// Select styles; focused cards carry the card background on all elements
+	// so the highlight is continuous.
 	titleStyle := g.styles.CardTitle
 	subtitleStyle := g.styles.CardSubtle
 	attachedStyle := g.styles.CardAttached
 	markStyle := g.styles.MarkBadge
 	if focused {
 		bg := lipgloss.Color("236")
-		titleStyle = g.styles.CardFocusedTitle
+		titleStyle = g.styles.CardTitle.Copy().Background(bg)
 		subtitleStyle = g.styles.CardSubtle.Copy().Background(bg)
 		attachedStyle = g.styles.CardAttached.Copy().Background(bg)
 		markStyle = g.styles.MarkBadge.Copy().Background(bg)
@@ -263,7 +264,7 @@ func (g *Grid) renderCard(item GridItem, focused bool) string {
 	// Build the title line with indicator and mark badge.
 	titleRendered := titleStyle.Render(displayTitle)
 	if indicator != "" {
-		titleRendered = attachedStyle.Render(indicator) + " " + titleRendered
+		titleRendered = attachedStyle.Render(indicator+" ") + titleRendered
 	}
 
 	// Build the full first line: title on the left, mark badge on the right.
@@ -275,17 +276,29 @@ func (g *Grid) renderCard(item GridItem, focused bool) string {
 		if gap < 1 {
 			gap = 1
 		}
-		titleRendered = titleRendered + strings.Repeat(" ", gap) + badge
+		spacer := strings.Repeat(" ", gap)
+		if focused {
+			spacer = lipgloss.NewStyle().Background(lipgloss.Color("236")).Render(spacer)
+		}
+		titleRendered = titleRendered + spacer + badge
 	}
 
 	subtitleRendered := subtitleStyle.Render(subtitle)
 	content := titleRendered + "\n" + subtitleRendered
 
 	// Apply dynamic width: border(2) + padding(2) + contentW.
-	style := g.styles.CardStyle.Copy().Width(contentW + 2)
+	// For focused cards, wrap content in a background-filled block (including
+	// padding) so the highlight covers the entire card interior seamlessly.
 	if focused {
-		style = g.styles.CardFocusedStyle.Copy().Width(contentW + 2)
+		inner := lipgloss.NewStyle().
+			Background(lipgloss.Color("236")).
+			Width(contentW + 2). // content + padding
+			Padding(0, 1).
+			Render(content)
+		style := g.styles.CardFocusedStyle.Copy().Width(contentW + 2)
+		return style.Render(inner)
 	}
+	style := g.styles.CardStyle.Copy().Width(contentW + 2)
 	return style.Render(content)
 }
 

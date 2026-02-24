@@ -7,9 +7,8 @@ type Styles struct {
 	// Cards
 	CardStyle        lipgloss.Style
 	CardFocusedStyle lipgloss.Style
-	CardTitle        lipgloss.Style
-	CardFocusedTitle lipgloss.Style
-	CardSubtle       lipgloss.Style
+	CardTitle  lipgloss.Style
+	CardSubtle lipgloss.Style
 	CardAttached     lipgloss.Style
 	MarkBadge        lipgloss.Style
 
@@ -47,17 +46,11 @@ func NewStyles() Styles {
 
 		CardFocusedStyle: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("75")).
-			Padding(0, 1),
+			BorderForeground(lipgloss.Color("75")),
 
 		CardTitle: lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("75")),
-
-		CardFocusedTitle: lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("75")).
-			Background(lipgloss.Color("236")),
 
 		CardSubtle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("245")),
