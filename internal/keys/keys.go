@@ -26,6 +26,12 @@ const (
 	ActionKill   // x
 	ActionTag    // t
 
+	// Reorder
+	ActionReorderUp
+	ActionReorderDown
+	ActionReorderLeft
+	ActionReorderRight
+
 	// UI
 	ActionTogglePreview // tab
 	ActionToggleHelp    // ?
@@ -41,6 +47,7 @@ var reservedKeys = map[string]bool{
 	"j": true, "k": true, "h": true, "l": true,
 	"?": true, "q": true, "m": true, "/": true,
 	"n": true, "r": true, "x": true, "t": true,
+	"H": true, "J": true, "K": true, "L": true,
 }
 
 // defaultKeymap maps key strings to actions.
@@ -49,6 +56,9 @@ var defaultKeymap = map[string]Action{
 	"down": ActionMoveDown, "j": ActionMoveDown,
 	"left": ActionMoveLeft, "h": ActionMoveLeft,
 	"right": ActionMoveRight, "l": ActionMoveRight,
+
+	"K": ActionReorderUp, "J": ActionReorderDown,
+	"H": ActionReorderLeft, "L": ActionReorderRight,
 
 	"enter": ActionConfirm,
 	"space": ActionQuickSwap,

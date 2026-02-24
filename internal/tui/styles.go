@@ -41,14 +41,12 @@ func NewStyles() Styles {
 		CardStyle: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("240")).
-			Padding(0, 1).
-			Width(cardContentWidth + 2), // +2 for left/right padding
+			Padding(0, 1),
 
 		CardFocusedStyle: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("39")).
-			Padding(0, 1).
-			Width(cardContentWidth + 2),
+			Padding(0, 1),
 
 		CardTitle: lipgloss.NewStyle().
 			Bold(true).

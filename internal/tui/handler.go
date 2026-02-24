@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/tswitch/internal/config"
 	"github.com/user/tswitch/internal/keys"
+	"github.com/user/tswitch/internal/tmux"
 )
 
 // ---------------------------------------------------------------------------
@@ -291,6 +292,7 @@ func (m *Model) handleBack() (tea.Model, tea.Cmd) {
 	case m.currentMode == ModeWindowGrid:
 		m.resetFilter()
 		m.currentMode = ModeSessionGrid
+		m.applyLayout()
 		return m, m.syncPreview()
 	default:
 		return m, tea.Quit
@@ -311,6 +313,7 @@ func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 		} else {
 			m.resetFilter()
 			m.currentMode = ModeWindowGrid
+			m.applyLayout()
 			return m, m.syncPreview()
 		}
 
@@ -483,7 +486,14 @@ func (m *Model) fetchCapture() tea.Cmd {
 		if err != nil {
 			return captureResultMsg{"(capture error: " + err.Error() + ")"}
 		}
-		return captureResultMsg{content}
+		// tmux pads every line with spaces to the full pane width and may
+		// include \r; strip both so the preview box doesn't overflow.
+		content = strings.ReplaceAll(content, "\r", "")
+		rawLines := strings.Split(content, "\n")
+		for i, l := range rawLines {
+			rawLines[i] = strings.TrimRight(l, " ")
+		}
+		return captureResultMsg{strings.Join(rawLines, "\n")}
 	}
 }
 
@@ -491,4 +501,46 @@ func (m *Model) fetchCapture() tea.Cmd {
 func (m *Model) moveFocus(dx, dy int) tea.Cmd {
 	m.activeGrid().MoveFocus(dx, dy)
 	return m.syncPreview()
+}
+
+// handleReorder swaps the focused item with its neighbor and persists the new order.
+func (m *Model) handleReorder(dx, dy int) (tea.Model, tea.Cmd) {
+	grid := m.activeGrid()
+	if !grid.MoveItem(dx, dy) {
+		return m, nil
+	}
+
+	// Extract and persist the new order.
+	switch m.currentMode {
+	case ModeSessionGrid:
+		items := grid.Items()
+		order := make([]string, len(items))
+		for i, item := range items {
+			order[i] = item.(SessionCard).session.Name
+		}
+		m.config.SetSessionOrder(order)
+		// Update m.sessions to match new order.
+		m.sessions = make([]tmux.Session, len(items))
+		for i, item := range items {
+			m.sessions[i] = item.(SessionCard).session
+		}
+
+	case ModeWindowGrid:
+		items := grid.Items()
+		indices := make([]int, len(items))
+		for i, item := range items {
+			indices[i] = item.(WindowCard).window.Index
+		}
+		m.config.SetWindowOrder(m.currentSess, indices)
+		// Update m.windows to match new order.
+		m.windows = make([]tmux.Window, len(items))
+		for i, item := range items {
+			m.windows[i] = item.(WindowCard).window
+		}
+	}
+
+	if err := config.SaveConfig(m.config); err != nil {
+		m.setStatusError(err.Error())
+	}
+	return m, m.syncPreview()
 }

@@ -10,9 +10,11 @@ import (
 
 // Config holds the application configuration.
 type Config struct {
-	Tags     map[string][]string `yaml:"tags"`
-	Marks    map[string]Mark     `yaml:"marks"`
-	Settings Settings            `yaml:"settings"`
+	Tags         map[string][]string `yaml:"tags"`
+	Marks        map[string]Mark     `yaml:"marks"`
+	Settings     Settings            `yaml:"settings"`
+	SessionOrder []string            `yaml:"session_order,omitempty"`
+	WindowOrder  map[string][]int    `yaml:"window_order,omitempty"`
 }
 
 // Mark represents a bookmarked session/window/pane.
@@ -130,6 +132,21 @@ func (c *Config) GetSessionMarks(sessionName string) []string {
 		}
 	}
 	return out
+}
+
+// ---------------------------------------------------------------------------
+// Order helpers
+// ---------------------------------------------------------------------------
+
+func (c *Config) SetSessionOrder(order []string) {
+	c.SessionOrder = order
+}
+
+func (c *Config) SetWindowOrder(session string, indices []int) {
+	if c.WindowOrder == nil {
+		c.WindowOrder = make(map[string][]int)
+	}
+	c.WindowOrder[session] = indices
 }
 
 // ---------------------------------------------------------------------------

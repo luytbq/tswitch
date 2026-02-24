@@ -32,16 +32,23 @@ func (e *shellExecutor) Run(args ...string) (string, error) {
 
 // Client wraps tmux commands and implements Service.
 type Client struct {
-	exec   Executor
-	inTmux bool
+	exec           Executor
+	inTmux         bool
+	currentSession string // session tswitch is running in (empty if not in tmux)
 }
 
 // NewClient creates a Client that shells out to the real tmux binary.
 func NewClient() *Client {
-	return &Client{
+	c := &Client{
 		exec:   &shellExecutor{},
 		inTmux: os.Getenv("TMUX") != "",
 	}
+	if c.inTmux {
+		if out, err := c.exec.Run("display-message", "-p", "#{session_name}"); err == nil {
+			c.currentSession = strings.TrimSpace(out)
+		}
+	}
+	return c
 }
 
 // NewClientWith creates a Client using the given Executor (useful for tests).
@@ -188,6 +195,11 @@ func (c *Client) RenameSession(oldName, newName string) error {
 }
 
 func (c *Client) KillSession(sessionName string) error {
+	// If we're running inside the session being killed, switch to another
+	// session first so tswitch isn't terminated mid-execution.
+	if c.currentSession == sessionName {
+		c.exec.Run("switch-client", "-n") // ignore error — best effort
+	}
 	_, err := c.exec.Run("kill-session", "-t", sessionName)
 	return err
 }
@@ -209,6 +221,11 @@ func (c *Client) RenameWindow(sessionName string, windowIndex int, newName strin
 }
 
 func (c *Client) KillWindow(sessionName string, windowIndex int) error {
+	// If we're running in the same session, switch focus away first to avoid
+	// tswitch being terminated if it happens to be in this window.
+	if c.currentSession == sessionName {
+		c.exec.Run("switch-client", "-n") // ignore error — best effort
+	}
 	target := fmt.Sprintf("%s:%d", sessionName, windowIndex)
 	_, err := c.exec.Run("kill-window", "-t", target)
 	return err

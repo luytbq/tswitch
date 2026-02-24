@@ -8,14 +8,12 @@ import (
 
 // Grid layout constants.
 const (
-	cardContentWidth = 22 // inner content width (chars)
-	cardGap          = 1  // gap between cards (chars)
-	cardHeight       = 6  // rendered card height: border(1) + up to 3 content lines + border(1) + gap
+	minCardContentW    = 16 // minimum card content width; cards expand beyond this
+	cardGap            = 1  // space between cards (right-side breathing room)
+	cardBorderPadding  = 4  // border-left(1) + pad-left(1) + pad-right(1) + border-right(1)
+	cardContentLines   = 2  // title line + subtitle line
+	cardRenderedHeight = cardContentLines + 2 // content lines + border top/bottom
 )
-
-// cardWidthTotal is the total space one card occupies including gap.
-// border-left(1) + padding-left(1) + content + padding-right(1) + border-right(1) + gap
-func cardWidthTotal() int { return cardContentWidth + 4 + cardGap }
 
 // GridItem represents an item that can be displayed in a grid card.
 type GridItem interface {
@@ -36,6 +34,7 @@ type Grid struct {
 	focusIndex   int
 	columns      int
 	rows         int
+	cardContentW int            // computed per-card content width
 	scrollOffset int
 	styles       Styles
 	markMap      map[string]string // item key -> mark key
@@ -90,6 +89,38 @@ func (g *Grid) MoveFocus(dx, dy int) {
 	}
 }
 
+// MoveItem swaps the focused item with its neighbor at offset (dx, dy)
+// and moves focus to the new position. Returns true if a swap occurred.
+func (g *Grid) MoveItem(dx, dy int) bool {
+	if len(g.items) == 0 {
+		return false
+	}
+
+	row := g.focusIndex / g.columns
+	col := g.focusIndex % g.columns
+
+	newRow := row + dy
+	newCol := col + dx
+	if newRow < 0 || newRow >= g.rows || newCol < 0 || newCol >= g.columns {
+		return false
+	}
+
+	newIndex := newRow*g.columns + newCol
+	if newIndex < 0 || newIndex >= len(g.items) {
+		return false
+	}
+
+	g.items[g.focusIndex], g.items[newIndex] = g.items[newIndex], g.items[g.focusIndex]
+	g.focusIndex = newIndex
+	g.ensureVisible()
+	return true
+}
+
+// Items returns the current grid items slice.
+func (g *Grid) Items() []GridItem {
+	return g.items
+}
+
 // FocusFirstWhere moves focus to the first item satisfying match.
 // Does nothing if no item matches.
 func (g *Grid) FocusFirstWhere(match func(GridItem) bool) {
@@ -119,7 +150,7 @@ func (g *Grid) Render() string {
 	g.recalculate()
 	g.ensureVisible()
 
-	visibleRows := g.height / cardHeight
+	visibleRows := g.height / cardRenderedHeight
 	if visibleRows < 1 {
 		visibleRows = 1
 	}
@@ -146,7 +177,13 @@ func (g *Grid) Render() string {
 // ---------------------------------------------------------------------------
 
 func (g *Grid) recalculate() {
-	g.columns = max(1, g.width/cardWidthTotal())
+	minSlot := minCardContentW + cardBorderPadding + cardGap
+	g.columns = max(1, g.width/minSlot)
+	slotW := g.width / g.columns
+	g.cardContentW = slotW - cardBorderPadding - cardGap
+	if g.cardContentW < minCardContentW {
+		g.cardContentW = minCardContentW
+	}
 	if len(g.items) > 0 {
 		g.rows = (len(g.items) + g.columns - 1) / g.columns
 	} else {
@@ -156,7 +193,7 @@ func (g *Grid) recalculate() {
 
 func (g *Grid) ensureVisible() {
 	focusRow := g.focusIndex / g.columns
-	visibleRows := g.height / cardHeight
+	visibleRows := g.height / cardRenderedHeight
 	if visibleRows < 1 {
 		visibleRows = 1
 	}
@@ -174,13 +211,18 @@ func (g *Grid) renderCard(item GridItem, focused bool) string {
 	subtitle := item.Subtitle()
 	indicator := item.Indicator()
 
+	contentW := g.cardContentW
+	if contentW < minCardContentW {
+		contentW = minCardContentW
+	}
+
 	// Look up mark using the full title before truncation.
 	markKey, hasMark := g.markMap[title]
 
 	// Truncate long titles so cards stay uniform.
-	maxTitleLen := cardContentWidth - 2 // leave room for indicator
+	maxTitleLen := contentW - 2 // leave room for indicator
 	if hasMark {
-		maxTitleLen = cardContentWidth - 4 - len(markKey) // room for " [x]"
+		maxTitleLen = contentW - 4 - len(markKey) // room for " [x]"
 	}
 	if indicator != "" {
 		maxTitleLen -= 2 // room for "● "
@@ -203,10 +245,9 @@ func (g *Grid) renderCard(item GridItem, focused bool) string {
 	// Build the full first line: title on the left, mark badge on the right.
 	if hasMark {
 		badge := g.styles.MarkBadge.Render("[" + markKey + "]")
-		// Calculate available space for padding between title and badge.
 		titleWidth := lipgloss.Width(titleRendered)
 		badgeWidth := lipgloss.Width(badge)
-		gap := cardContentWidth - titleWidth - badgeWidth
+		gap := contentW - titleWidth - badgeWidth
 		if gap < 1 {
 			gap = 1
 		}
@@ -214,12 +255,12 @@ func (g *Grid) renderCard(item GridItem, focused bool) string {
 	}
 
 	subtitleRendered := g.styles.CardSubtle.Render(subtitle)
-
 	content := titleRendered + "\n" + subtitleRendered
 
-	style := g.styles.CardStyle
+	// Apply dynamic width: border(2) + padding(2) + contentW.
+	style := g.styles.CardStyle.Copy().Width(contentW + 2)
 	if focused {
-		style = g.styles.CardFocusedStyle
+		style = g.styles.CardFocusedStyle.Copy().Width(contentW + 2)
 	}
 	return style.Render(content)
 }

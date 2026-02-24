@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/user/tswitch/internal/tmux"
 )
 
@@ -129,6 +130,19 @@ func (pp *PreviewPanel) Render() string {
 	lines := strings.Split(body, "\n")
 	if len(lines) > maxLines {
 		lines = lines[:maxLines]
+	}
+
+	// Truncate lines that exceed the panel width to prevent layout overflow.
+	// Use lipgloss.Width for accurate visual width (handles wide/multi-byte chars).
+	for i, line := range lines {
+		if lipgloss.Width(line) > pp.width {
+			runes := []rune(line)
+			cut := len(runes)
+			for cut > 0 && lipgloss.Width(string(runes[:cut])) > pp.width {
+				cut--
+			}
+			lines[i] = string(runes[:cut])
+		}
 	}
 
 	inner := titleLine + "\n" + strings.Join(lines, "\n")

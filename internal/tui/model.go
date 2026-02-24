@@ -192,6 +192,15 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keys.ActionMoveRight:
 		return m, m.moveFocus(1, 0)
 
+	case keys.ActionReorderUp:
+		return m.handleReorder(0, -1)
+	case keys.ActionReorderDown:
+		return m.handleReorder(0, 1)
+	case keys.ActionReorderLeft:
+		return m.handleReorder(-1, 0)
+	case keys.ActionReorderRight:
+		return m.handleReorder(1, 0)
+
 	case keys.ActionConfirm:
 		return m.handleConfirm()
 
@@ -217,6 +226,7 @@ func (m *Model) loadSessions() error {
 	if err != nil {
 		return err
 	}
+	sessions = m.applySavedSessionOrder(sessions)
 	m.sessions = sessions
 
 	// Pre-fetch all window names so session filtering can match against them.
@@ -237,6 +247,7 @@ func (m *Model) loadWindows(sessionName string) error {
 	if err != nil {
 		return err
 	}
+	windows = m.applySavedWindowOrder(sessionName, windows)
 	m.windows = windows
 	m.currentSess = sessionName
 
@@ -269,6 +280,65 @@ func (m *Model) applyFilter() {
 	}
 }
 
+// applySavedSessionOrder reorders sessions according to the saved order.
+// Sessions not in the saved order are appended at the end.
+func (m *Model) applySavedSessionOrder(sessions []tmux.Session) []tmux.Session {
+	if len(m.config.SessionOrder) == 0 {
+		return sessions
+	}
+
+	byName := make(map[string]tmux.Session, len(sessions))
+	for _, s := range sessions {
+		byName[s.Name] = s
+	}
+
+	result := make([]tmux.Session, 0, len(sessions))
+	seen := make(map[string]bool)
+
+	for _, name := range m.config.SessionOrder {
+		if s, ok := byName[name]; ok {
+			result = append(result, s)
+			seen[name] = true
+		}
+	}
+	for _, s := range sessions {
+		if !seen[s.Name] {
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
+// applySavedWindowOrder reorders windows according to the saved order.
+// Windows not in the saved order are appended at the end.
+func (m *Model) applySavedWindowOrder(sessionName string, windows []tmux.Window) []tmux.Window {
+	order, ok := m.config.WindowOrder[sessionName]
+	if !ok || len(order) == 0 {
+		return windows
+	}
+
+	byIndex := make(map[int]tmux.Window, len(windows))
+	for _, w := range windows {
+		byIndex[w.Index] = w
+	}
+
+	result := make([]tmux.Window, 0, len(windows))
+	seen := make(map[int]bool)
+
+	for _, idx := range order {
+		if w, ok := byIndex[idx]; ok {
+			result = append(result, w)
+			seen[idx] = true
+		}
+	}
+	for _, w := range windows {
+		if !seen[w.Index] {
+			result = append(result, w)
+		}
+	}
+	return result
+}
+
 // resetFilter clears filter state. The grid already contains all items
 // (no filter was applied when the mode was entered), so no SetItems call needed.
 func (m *Model) resetFilter() {
@@ -283,55 +353,31 @@ func (m *Model) resetFilter() {
 func (m *Model) resize(w, h int) {
 	m.width = w
 	m.height = h
-
-	gridW, gridH, previewW, previewH := m.layoutSizes()
-	m.sessionGrid.SetSize(gridW, gridH)
-	m.windowGrid.SetSize(gridW, gridH)
-	m.previewPanel.SetSize(previewW, previewH)
+	m.applyLayout()
 }
 
-// layoutSizes computes the width/height for the grid and preview panel
-// based on the current terminal dimensions.
+// layoutSizes computes the width/height for the grid and preview panel.
 //
-// Horizontal: [ grid cards ] GAP [ preview_border(content) ]
-//   - Each card renders at cardWidthTotal()-cardGap + cardGap wide.
-//   - Preview rendered width = previewContentW + 2 (border left+right).
-//   - Gap = 1 char between grid and preview.
-//   - Grid gets whatever width remains after preview + gap.
-//
-// Vertical: header(1 line) + body + statusbar(1 line)
-//
-// Strategy: allocate enough columns for cards first, give remainder to preview.
+// Session view: preview ~40%, grid ~60%.
+// Window view:  50-50 split so there's room to show window content.
 func (m *Model) layoutSizes() (gridW, gridH, previewContentW, previewH int) {
-	const gap = 1
-	const previewBorder = 2 // lipgloss border adds 2 to rendered width
+	const gap = 1           // space between grid and preview
+	const previewBorder = 4 // border(1 each side=2) + Padding(1) horizontal(1 each side=2)
 
-	// Determine how many card columns fit, aiming for at least 2 if possible.
-	// Each card needs cardWidthTotal() of horizontal space.
-	cwt := cardWidthTotal() // 27 (rendered 26 + gap 1)
-
-	// Try to fit at least 2 columns; fall back to 1 on very small terminals.
-	minGridW := cwt * 2 // ideal: at least 2 columns
-	if m.width < minGridW+previewBorder+gap+16 {
-		// Too narrow for 2 columns + preview; use 1 column.
-		minGridW = cwt
+	previewPct := 40
+	if m.currentMode == ModeWindowGrid {
+		previewPct = 50
 	}
 
-	// Preview gets the remaining space, clamped to a reasonable range.
-	previewRendered := m.width - minGridW - gap
+	previewRendered := m.width * previewPct / 100
+	if previewRendered < previewBorder+minCardContentW {
+		previewRendered = previewBorder + minCardContentW
+	}
 	previewContentW = previewRendered - previewBorder
-	if previewContentW < 16 {
-		previewContentW = 16
-	}
-	if previewContentW > 40 {
-		previewContentW = 40
-	}
 
-	// Recalculate: after clamping preview, grid gets the actual remainder.
-	previewRendered = previewContentW + previewBorder
 	gridW = m.width - previewRendered - gap
-	if gridW < cwt {
-		gridW = cwt
+	if gridW < 1 {
+		gridW = 1
 	}
 
 	bodyH := m.height - 2 // header(1) + statusbar(1)
@@ -341,6 +387,15 @@ func (m *Model) layoutSizes() (gridW, gridH, previewContentW, previewH int) {
 	gridH = bodyH
 	previewH = bodyH
 	return
+}
+
+// applyLayout recalculates and pushes updated sizes to all components.
+// Call after any mode switch in addition to terminal resize.
+func (m *Model) applyLayout() {
+	gridW, gridH, previewW, previewH := m.layoutSizes()
+	m.sessionGrid.SetSize(gridW, gridH)
+	m.windowGrid.SetSize(gridW, gridH)
+	m.previewPanel.SetSize(previewW, previewH)
 }
 
 // ---------------------------------------------------------------------------

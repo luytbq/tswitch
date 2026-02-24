@@ -55,6 +55,7 @@ func (m *Model) renderHelp() string {
 	writeHelpLine(&b, s, "n", "New session / window")
 	writeHelpLine(&b, s, "r", "Rename session / window")
 	writeHelpLine(&b, s, "x", "Kill session / window")
+	writeHelpLine(&b, s, "H/J/K/L", "Reorder items")
 
 	b.WriteString("\n")
 	b.WriteString(s.HelpSection.Render("Search & UI"))
@@ -78,8 +79,12 @@ func writeHelpLine(b *strings.Builder, s Styles, key, desc string) {
 // ---------------------------------------------------------------------------
 
 // renderLayout composes the header + grid|preview + status bar.
+// The grid is padded to its full allocated width so the preview is always
+// flush against the right edge regardless of how many cards are rendered.
 func (m *Model) renderLayout(header, grid, preview string) string {
-	main := lipgloss.JoinHorizontal(lipgloss.Top, grid, " ", preview)
+	gridW := m.activeGrid().width
+	paddedGrid := lipgloss.NewStyle().Width(gridW).Render(grid)
+	main := lipgloss.JoinHorizontal(lipgloss.Top, paddedGrid, " ", preview)
 	return lipgloss.JoinVertical(lipgloss.Left, header, main, m.renderStatusBar())
 }
 
@@ -96,9 +101,9 @@ func (m *Model) renderStatusBar() string {
 	// Left side: keybind hints (always shown).
 	var hints string
 	if m.currentMode == ModeSessionGrid {
-		hints = "j/k:nav  enter:select  space:quick  /:search  n:new  r:rename  x:kill  m:mark  ?:help  q:quit"
+		hints = "j/k:nav  J/K:reorder  enter:select  space:quick  /:search  n:new  r:rename  x:kill  m:mark  ?:help  q:quit"
 	} else {
-		hints = "j/k:nav  enter:switch  /:search  n:new  r:rename  x:kill  m:mark  esc:back  ?:help  q:quit"
+		hints = "j/k:nav  J/K:reorder  enter:switch  /:search  n:new  r:rename  x:kill  m:mark  esc:back  ?:help  q:quit"
 	}
 	left := s.StatusHints.Render(hints)
 
