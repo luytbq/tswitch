@@ -3,7 +3,7 @@ package tui
 import (
 	"fmt"
 
-	"github.com/user/tswitch/internal/tmux"
+	"github.com/luytbq/tswitch/internal/tmux"
 )
 
 // SessionCard wraps a tmux.Session for grid display.

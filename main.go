@@ -6,10 +6,10 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/user/tswitch/internal/config"
-	"github.com/user/tswitch/internal/keys"
-	"github.com/user/tswitch/internal/tmux"
-	"github.com/user/tswitch/internal/tui"
+	"github.com/luytbq/tswitch/internal/config"
+	"github.com/luytbq/tswitch/internal/keys"
+	"github.com/luytbq/tswitch/internal/tmux"
+	"github.com/luytbq/tswitch/internal/tui"
 )
 
 func main() {

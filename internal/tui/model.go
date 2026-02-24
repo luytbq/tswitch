@@ -6,9 +6,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/user/tswitch/internal/config"
-	"github.com/user/tswitch/internal/keys"
-	"github.com/user/tswitch/internal/tmux"
+	"github.com/luytbq/tswitch/internal/config"
+	"github.com/luytbq/tswitch/internal/keys"
+	"github.com/luytbq/tswitch/internal/tmux"
 )
 
 // Mode represents the current navigation level.
@@ -395,6 +395,18 @@ func (m *Model) applyLayout() {
 	gridW, gridH, previewW, previewH := m.layoutSizes()
 	m.sessionGrid.SetSize(gridW, gridH)
 	m.windowGrid.SetSize(gridW, gridH)
+
+	// The grid may not use its full allocated width (integer division
+	// remainder). Give the leftover to the preview so there's no gap.
+	const gap = 1
+	const previewBorder = 4
+	gridUsed := m.activeGrid().UsedWidth()
+	extraW := gridW - gridUsed
+	previewW += extraW
+	if previewW < previewBorder {
+		previewW = previewBorder
+	}
+
 	m.previewPanel.SetSize(previewW, previewH)
 }
 

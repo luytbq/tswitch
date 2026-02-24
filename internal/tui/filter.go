@@ -2,7 +2,7 @@ package tui
 
 import (
 	"github.com/sahilm/fuzzy"
-	"github.com/user/tswitch/internal/tmux"
+	"github.com/luytbq/tswitch/internal/tmux"
 )
 
 // FilterSessions returns sessions whose names, or any of their window names,

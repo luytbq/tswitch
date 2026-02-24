@@ -1,4 +1,4 @@
-module github.com/user/tswitch
+module github.com/luytbq/tswitch
 
 go 1.24.2
 

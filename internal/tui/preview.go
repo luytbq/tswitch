@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/user/tswitch/internal/tmux"
+	"github.com/luytbq/tswitch/internal/tmux"
 )
 
 // PreviewMode is a typed enum for the preview panel display mode.
@@ -153,10 +153,12 @@ func (pp *PreviewPanel) Render() string {
 		contentH = 1
 	}
 
+	// lipgloss Width includes padding; pp.width is the text content width,
+	// so add 2 for horizontal padding (Padding(1) = 1 left + 1 right).
 	return pp.styles.PreviewBorder.
 		Copy().
 		Padding(1).
-		Width(pp.width).
+		Width(pp.width + 2).
 		Height(contentH).
 		Render(inner)
 }
