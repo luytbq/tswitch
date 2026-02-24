@@ -90,6 +90,18 @@ func (g *Grid) MoveFocus(dx, dy int) {
 	}
 }
 
+// FocusFirstWhere moves focus to the first item satisfying match.
+// Does nothing if no item matches.
+func (g *Grid) FocusFirstWhere(match func(GridItem) bool) {
+	for i, item := range g.items {
+		if match(item) {
+			g.focusIndex = i
+			g.ensureVisible()
+			return
+		}
+	}
+}
+
 // GetFocused returns the currently focused item, or nil.
 func (g *Grid) GetFocused() GridItem {
 	if g.focusIndex < len(g.items) {

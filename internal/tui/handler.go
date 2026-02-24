@@ -142,6 +142,8 @@ func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
 			m.setStatus("Created: " + name)
 			_ = m.loadSessions()
 			m.applyFilter()
+			m.sessionGrid.FocusFirstWhere(func(item GridItem) bool { return item.Title() == name })
+			m.syncPreview()
 		}
 
 	case dialogRenameSession:
@@ -191,6 +193,8 @@ func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
 			m.setStatus("Created: " + name)
 			_ = m.loadWindows(m.currentSess)
 			m.applyFilter()
+			m.windowGrid.FocusFirstWhere(func(item GridItem) bool { return item.Title() == name })
+			m.syncPreview()
 		}
 
 	case dialogRenameWindow:
