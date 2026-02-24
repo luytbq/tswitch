@@ -197,7 +197,8 @@ func (c *Client) KillSession(sessionName string) error {
 // ---------------------------------------------------------------------------
 
 func (c *Client) NewWindow(sessionName string, windowName string) error {
-	_, err := c.exec.Run("new-window", "-t", sessionName, "-n", windowName)
+	home, _ := os.UserHomeDir()
+	_, err := c.exec.Run("new-window", "-t", sessionName, "-n", windowName, "-c", home)
 	return err
 }
 
