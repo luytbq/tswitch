@@ -386,7 +386,7 @@ func (m *Model) handleMarkAssignment(keyStr string) (tea.Model, tea.Cmd) {
 		// Remove any existing mark pointing to the same target before setting new one.
 		m.config.RemoveMarksForTarget(card.session.Name, -1)
 		m.config.SetMark(keyStr, card.session.Name, -1, 0)
-		if err := config.SaveConfig(m.config); err != nil {
+		if err := config.SaveState(m.config); err != nil {
 			m.setStatusError(fmt.Sprintf("Failed to save: %v", err))
 		} else {
 			m.setStatus(fmt.Sprintf("Marked %s -> [%s]", card.session.Name, keyStr))
@@ -399,7 +399,7 @@ func (m *Model) handleMarkAssignment(keyStr string) (tea.Model, tea.Cmd) {
 		}
 		m.config.RemoveMarksForTarget(m.currentSess, card.window.Index)
 		m.config.SetMark(keyStr, m.currentSess, card.window.Index, 0)
-		if err := config.SaveConfig(m.config); err != nil {
+		if err := config.SaveState(m.config); err != nil {
 			m.setStatusError(fmt.Sprintf("Failed to save: %v", err))
 		} else {
 			m.setStatus(fmt.Sprintf("Marked %s:%d -> [%s]", m.currentSess, card.window.Index, keyStr))
@@ -539,7 +539,7 @@ func (m *Model) handleReorder(dx, dy int) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if err := config.SaveConfig(m.config); err != nil {
+	if err := config.SaveState(m.config); err != nil {
 		m.setStatusError(err.Error())
 	}
 	return m, m.syncPreview()

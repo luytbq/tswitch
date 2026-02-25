@@ -63,7 +63,7 @@ func NewModel(appCfg *config.AppConfig) (*Model, error) {
 
 // NewModelWith creates a Model using the given tmux.Service (useful for tests).
 func NewModelWith(svc tmux.Service, appCfg *config.AppConfig) (*Model, error) {
-	cfg, err := config.LoadConfig()
+	cfg, err := config.LoadState()
 	if err != nil {
 		cfg = config.Default()
 	}

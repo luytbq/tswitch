@@ -44,9 +44,9 @@ func Default() *Config {
 	}
 }
 
-// LoadConfig reads the config from ~/.tswitch/state.yaml.
+// LoadState reads the state from ~/.tswitch/state.yaml.
 // If the file does not exist, it returns defaults.
-func LoadConfig() (*Config, error) {
+func LoadState() (*Config, error) {
 	dir, err := configDir()
 	if err != nil {
 		return nil, err
@@ -70,8 +70,8 @@ func LoadConfig() (*Config, error) {
 	return cfg, nil
 }
 
-// SaveConfig writes the config to ~/.tswitch/state.yaml.
-func SaveConfig(cfg *Config) error {
+// SaveState writes the state to ~/.tswitch/state.yaml.
+func SaveState(cfg *Config) error {
 	dir, err := configDir()
 	if err != nil {
 		return err
