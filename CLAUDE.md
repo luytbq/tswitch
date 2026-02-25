@@ -34,7 +34,7 @@ The codebase has three main layers:
 - `Service` interface enables dependency injection and future testability via mock implementations
 
 ### 2. Config Layer (`internal/config/`)
-- Manages persistent YAML config at `~/.config/tswitch/config.yaml`
+- Manages persistent YAML state at `~/.tswitch/state.yaml`
 - Handles the marks system (single-key bookmarks for sessions/windows), session tags, and user settings
 - Falls back to sensible defaults when config is absent
 

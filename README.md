@@ -89,7 +89,7 @@ Override default keys by placing a `tswitch-config.json` file next to the binary
 
 Action names match the defaults: `move_up`, `move_down`, `move_left`, `move_right`, `confirm`, `quick_swap`, `back`, `start_mark`, `new`, `rename`, `kill`, `tag`, `reorder_up`, `reorder_down`, `reorder_left`, `reorder_right`, `toggle_preview`, `toggle_help`, `filter`, `quit`.
 
-### Runtime state — `~/.config/tswitch/config.yaml`
+### Runtime state — `~/.tswitch/state.yaml`
 
 Auto-managed by tswitch. Stores marks, session/window ordering, and tags. You normally don't need to edit this by hand.
 

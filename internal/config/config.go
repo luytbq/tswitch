@@ -44,7 +44,7 @@ func Default() *Config {
 	}
 }
 
-// LoadConfig reads the config from ~/.config/tswitch/config.yaml.
+// LoadConfig reads the config from ~/.tswitch/state.yaml.
 // If the file does not exist, it returns defaults.
 func LoadConfig() (*Config, error) {
 	dir, err := configDir()
@@ -52,7 +52,7 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
-	path := filepath.Join(dir, "config.yaml")
+	path := filepath.Join(dir, "state.yaml")
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return Default(), nil
 	}
@@ -70,7 +70,7 @@ func LoadConfig() (*Config, error) {
 	return cfg, nil
 }
 
-// SaveConfig writes the config to ~/.config/tswitch/config.yaml.
+// SaveConfig writes the config to ~/.tswitch/state.yaml.
 func SaveConfig(cfg *Config) error {
 	dir, err := configDir()
 	if err != nil {
@@ -84,7 +84,7 @@ func SaveConfig(cfg *Config) error {
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
-	return os.WriteFile(filepath.Join(dir, "config.yaml"), data, 0644)
+	return os.WriteFile(filepath.Join(dir, "state.yaml"), data, 0644)
 }
 
 // ---------------------------------------------------------------------------
@@ -196,7 +196,7 @@ func configDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("home dir: %w", err)
 	}
-	return filepath.Join(home, ".config", "tswitch"), nil
+	return filepath.Join(home, ".tswitch"), nil
 }
 
 func (c *Config) fillDefaults() {
