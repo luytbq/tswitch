@@ -9,8 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Build
-go build -o tswitch
+# Build (injects version from git tag)
+make build
 
 # Run
 ./tswitch

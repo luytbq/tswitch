@@ -14,6 +14,8 @@ import (
 	"github.com/luytbq/tswitch/internal/tui"
 )
 
+var version = "dev"
+
 func main() {
 	// Load JSON app config and apply key overrides before anything else.
 	appCfg, err := config.LoadAppConfig()
@@ -22,6 +24,11 @@ func main() {
 	}
 	if appCfg != nil && len(appCfg.Keys) > 0 {
 		keys.ApplyOverrides(appCfg.Keys)
+	}
+
+	if len(os.Args) > 1 && os.Args[1] == "version" {
+		fmt.Println("tswitch " + version)
+		return
 	}
 
 	if len(os.Args) > 1 {
