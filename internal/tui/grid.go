@@ -85,7 +85,12 @@ func (g *Grid) MoveFocus(dx, dy int) {
 	newCol := clamp(col+dx, 0, g.columns-1)
 
 	newIndex := newRow*g.columns + newCol
-	if newIndex < len(g.items) {
+	if newIndex >= len(g.items) {
+		// Target cell doesn't exist (incomplete last row).
+		// Clamp to the last item on that row.
+		newIndex = len(g.items) - 1
+	}
+	if newIndex >= 0 && newIndex != g.focusIndex {
 		g.focusIndex = newIndex
 		g.ensureVisible()
 	}
