@@ -181,6 +181,12 @@ func (c *Client) SwitchClient(sessionName string, windowIndex int) error {
 	return err
 }
 
+func (c *Client) SelectPane(sessionName string, windowIndex int, paneIndex int) error {
+	target := fmt.Sprintf("%s:%d.%d", sessionName, windowIndex, paneIndex)
+	_, err := c.exec.Run("switch-client", "-t", target)
+	return err
+}
+
 func (c *Client) AttachSession(sessionName string) error {
 	_, err := c.exec.Run("attach-session", "-t", sessionName)
 	return err

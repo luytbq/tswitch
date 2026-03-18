@@ -31,6 +31,15 @@ func (m *Model) renderWindowView() string {
 	return m.renderLayout(header, separator, m.windowGrid.Render(), m.previewPanel.Render())
 }
 
+func (m *Model) renderPaneView() string {
+	count := len(m.paneGrid.Items())
+	winName := m.windowName(m.currentWin)
+	header := m.styles.HeaderStyle.Render(fmt.Sprintf("Sessions › %s › %s (%d)", m.currentSess, winName, count))
+	separator := m.styles.CardSubtle.Render(strings.Repeat("─", m.width))
+
+	return m.renderLayout(header, separator, m.paneGrid.Render(), m.previewPanel.Render())
+}
+
 func (m *Model) renderHelp() string {
 	s := m.styles
 	var b strings.Builder
@@ -42,8 +51,8 @@ func (m *Model) renderHelp() string {
 	b.WriteString(s.HelpSection.Render("Navigation"))
 	b.WriteString("\n")
 	writeHelpLine(&b, s, "h/j/k/l, arrows", "Move between cards")
-	writeHelpLine(&b, s, "enter", "Drill into session / Switch to window")
-	writeHelpLine(&b, s, "space", "Quick switch to session")
+	writeHelpLine(&b, s, "enter", "Drill into children / Select pane")
+	writeHelpLine(&b, s, "space", "Switch to focused item")
 	writeHelpLine(&b, s, "esc", "Go back / Quit")
 
 	b.WriteString("\n")
@@ -114,12 +123,16 @@ func (m *Model) renderStatusBar() string {
 
 	// Left side: mode label + keybind hints.
 	var modeLabel, hints string
-	if m.currentMode == ModeSessionGrid {
+	switch m.currentMode {
+	case ModeSessionGrid:
 		modeLabel = s.StatusMode.Render("SESSIONS")
-		hints = " hjkl:nav  enter:select  space:quick  /:search  n:new  r:rename  x:kill  m:mark  f:browse  ?:help  q:quit"
-	} else {
+		hints = " hjkl:nav  enter:drill  space:switch  /:search  n:new  r:rename  x:kill  m:mark  f:browse  ?:help  q:quit"
+	case ModeWindowGrid:
 		modeLabel = s.StatusMode.Render("WINDOWS")
-		hints = " hjkl:nav  enter:switch  /:search  n:new  r:rename  x:kill  m:mark  esc:back  ?:help  q:quit"
+		hints = " hjkl:nav  enter:drill  space:switch  /:search  n:new  r:rename  x:kill  m:mark  esc:back  ?:help  q:quit"
+	case ModePaneGrid:
+		modeLabel = s.StatusMode.Render("PANES")
+		hints = " hjkl:nav  enter:select  space:switch  /:search  m:mark  esc:back  ?:help  q:quit"
 	}
 	left := modeLabel + s.StatusHints.Render(hints)
 

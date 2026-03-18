@@ -17,6 +17,7 @@ type Mode int
 const (
 	ModeSessionGrid Mode = iota
 	ModeWindowGrid
+	ModePaneGrid
 )
 
 // Model is the top-level Bubbletea model.
@@ -30,13 +31,16 @@ type Model struct {
 	// UI components.
 	sessionGrid  *Grid
 	windowGrid   *Grid
+	paneGrid     *Grid
 	previewPanel *PreviewPanel
 
 	// State.
 	currentMode      Mode
 	sessions         []tmux.Session
 	windows          []tmux.Window
+	panes            []tmux.Pane
 	currentSess      string // session name when in window view
+	currentWin       int    // window index when in pane view
 	windowsBySession map[string][]string // session -> window names (for search)
 	helpShown     bool
 	markingMode   bool   // waiting for a mark-key press
@@ -85,6 +89,7 @@ func NewModelWith(svc tmux.Service, appCfg *config.AppConfig) (*Model, error) {
 	gridW, gridH, previewW, previewH := m.layoutSizes()
 	m.sessionGrid = NewGrid(gridW, gridH, styles)
 	m.windowGrid = NewGrid(gridW, gridH, styles)
+	m.paneGrid = NewGrid(gridW, gridH, styles)
 	m.previewPanel = NewPreviewPanel(previewW, previewH, styles)
 
 	if err := m.loadSessions(); err != nil {
@@ -139,6 +144,8 @@ func (m *Model) View() string {
 		return m.renderSessionView()
 	case ModeWindowGrid:
 		return m.renderWindowView()
+	case ModePaneGrid:
+		return m.renderPaneView()
 	}
 	return ""
 }
@@ -220,6 +227,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keys.ActionConfirm:
 		return m.handleConfirm()
 
+	case keys.ActionDirectSwitch:
+		return m.handleDirectSwitch()
+
 	case keys.ActionQuickSwap:
 		return m.handleQuickSwap()
 
@@ -275,6 +285,22 @@ func (m *Model) loadWindows(sessionName string) error {
 	return nil
 }
 
+func (m *Model) loadPanes(sessionName string, windowIndex int) error {
+	panes, err := m.tmux.ListPanes(sessionName, windowIndex)
+	if err != nil {
+		return err
+	}
+	m.panes = panes
+	m.currentWin = windowIndex
+
+	items := make([]GridItem, len(panes))
+	for i, p := range panes {
+		items[i] = PaneCard{p}
+	}
+	m.paneGrid.SetItems(items)
+	return nil
+}
+
 // applyFilter re-filters the current mode's items from the full list and
 // updates the grid. Called whenever filterQuery changes.
 func (m *Model) applyFilter() {
@@ -293,6 +319,13 @@ func (m *Model) applyFilter() {
 			items[i] = WindowCard{w}
 		}
 		m.windowGrid.SetItems(items)
+	case ModePaneGrid:
+		filtered := FilterPanes(m.panes, m.filterQuery)
+		items := make([]GridItem, len(filtered))
+		for i, p := range filtered {
+			items[i] = PaneCard{p}
+		}
+		m.paneGrid.SetItems(items)
 	}
 }
 
@@ -381,7 +414,7 @@ func (m *Model) layoutSizes() (gridW, gridH, previewContentW, previewH int) {
 	const previewBorder = 4 // border(1 each side=2) + Padding(1) horizontal(1 each side=2)
 
 	previewPct := 40
-	if m.currentMode == ModeWindowGrid {
+	if m.currentMode == ModeWindowGrid || m.currentMode == ModePaneGrid {
 		previewPct = 50
 	}
 
@@ -411,6 +444,7 @@ func (m *Model) applyLayout() {
 	gridW, gridH, previewW, previewH := m.layoutSizes()
 	m.sessionGrid.SetSize(gridW, gridH)
 	m.windowGrid.SetSize(gridW, gridH)
+	m.paneGrid.SetSize(gridW, gridH)
 
 	// The grid may not use its full allocated width (integer division
 	// remainder). Give the leftover to the preview so there's no gap.
@@ -457,10 +491,14 @@ func (m *Model) statusMessage() string {
 }
 
 func (m *Model) activeGrid() *Grid {
-	if m.currentMode == ModeWindowGrid {
+	switch m.currentMode {
+	case ModeWindowGrid:
 		return m.windowGrid
+	case ModePaneGrid:
+		return m.paneGrid
+	default:
+		return m.sessionGrid
 	}
-	return m.sessionGrid
 }
 
 // formatTimeSince returns a human-readable relative time string.

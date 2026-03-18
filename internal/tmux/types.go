@@ -18,6 +18,7 @@ type Service interface {
 	SwitchToSession(sessionName string) error
 	SwitchToLast() error
 	SwitchClient(sessionName string, windowIndex int) error
+	SelectPane(sessionName string, windowIndex int, paneIndex int) error
 	AttachSession(sessionName string) error
 
 	// Session management

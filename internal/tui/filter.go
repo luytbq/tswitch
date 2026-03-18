@@ -31,6 +31,24 @@ func FilterSessions(sessions []tmux.Session, term string, windowsBySession map[s
 	return out
 }
 
+// FilterPanes returns panes whose command+dir fuzzy-match term.
+func FilterPanes(panes []tmux.Pane, term string) []tmux.Pane {
+	if term == "" {
+		return panes
+	}
+
+	searchStrings := make([]string, len(panes))
+	for i, p := range panes {
+		searchStrings[i] = p.Command + " " + p.WorkingDir
+	}
+
+	var out []tmux.Pane
+	for _, m := range fuzzy.Find(term, searchStrings) {
+		out = append(out, panes[m.Index])
+	}
+	return out
+}
+
 // FilterWindows returns windows whose names fuzzy-match term.
 func FilterWindows(windows []tmux.Window, term string) []tmux.Window {
 	if term == "" {

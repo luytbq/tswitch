@@ -34,6 +34,8 @@ func (m *Model) handleNew() (tea.Model, tea.Cmd) {
 	case ModeWindowGrid:
 		m.dialog = NewInputDialog("New Window", "Window name:", "", m.styles)
 		m.pendingAction = dialogNewWindow
+	case ModePaneGrid:
+		// No-op: pane creation is not supported.
 	}
 	return m, nil
 }
@@ -54,6 +56,8 @@ func (m *Model) handleRename() (tea.Model, tea.Cmd) {
 		}
 		m.dialog = NewInputDialog("Rename Window", "New name:", card.window.Name, m.styles)
 		m.pendingAction = dialogRenameWindow
+	case ModePaneGrid:
+		// No-op: pane renaming is not supported.
 	}
 	return m, nil
 }
@@ -76,6 +80,8 @@ func (m *Model) handleKill() (tea.Model, tea.Cmd) {
 		m.dialog = NewConfirmDialog("Kill Window",
 			fmt.Sprintf("Kill window %q?", card.window.Name), m.styles)
 		m.pendingAction = dialogKillWindow
+	case ModePaneGrid:
+		// No-op: pane killing is not supported.
 	}
 	return m, nil
 }
@@ -281,7 +287,7 @@ func (m *Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // Navigation
 // ---------------------------------------------------------------------------
 
-// handleBack navigates backwards: window->session->quit.
+// handleBack navigates backwards: pane->window->session->quit.
 func (m *Model) handleBack() (tea.Model, tea.Cmd) {
 	switch {
 	case m.markingMode:
@@ -289,6 +295,11 @@ func (m *Model) handleBack() (tea.Model, tea.Cmd) {
 		m.setStatus("")
 	case m.helpShown:
 		m.helpShown = false
+	case m.currentMode == ModePaneGrid:
+		m.resetFilter()
+		m.currentMode = ModeWindowGrid
+		m.applyLayout()
+		return m, m.syncPreview()
 	case m.currentMode == ModeWindowGrid:
 		m.resetFilter()
 		m.currentMode = ModeSessionGrid
@@ -300,7 +311,9 @@ func (m *Model) handleBack() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleConfirm drills into a session or switches to a window.
+// handleConfirm drills into children. At the leaf level (panes), it switches.
+// Single-child skipping: single-window sessions skip to panes (or switch if
+// also single-pane); single-pane windows switch immediately.
 func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 	switch m.currentMode {
 	case ModeSessionGrid:
@@ -308,13 +321,33 @@ func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 		if !ok {
 			return m, nil
 		}
-		// Single-window session: switch immediately instead of drilling in.
+		// Single-window session: skip window grid, drill into panes directly.
 		if card.session.WindowCount == 1 {
-			if err := m.tmux.SwitchToSession(card.session.Name); err != nil {
+			if err := m.loadWindows(card.session.Name); err != nil {
 				m.setStatusError(err.Error())
 				return m, nil
 			}
-			return m, tea.Quit
+			// The single window — check if it also has a single pane.
+			if len(m.windows) == 1 {
+				w := m.windows[0]
+				if w.PaneCount <= 1 {
+					// Single window, single pane: switch immediately.
+					if err := m.tmux.SelectPane(card.session.Name, w.Index, 0); err != nil {
+						m.setStatusError(err.Error())
+						return m, nil
+					}
+					return m, tea.Quit
+				}
+				// Single window, multiple panes: skip to pane grid.
+				if err := m.loadPanes(card.session.Name, w.Index); err != nil {
+					m.setStatusError(err.Error())
+					return m, nil
+				}
+				m.resetFilter()
+				m.currentMode = ModePaneGrid
+				m.applyLayout()
+				return m, m.syncPreview()
+			}
 		}
 		if err := m.loadWindows(card.session.Name); err != nil {
 			m.setStatusError(err.Error())
@@ -330,26 +363,67 @@ func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 		if !ok {
 			return m, nil
 		}
-		if err := m.tmux.SwitchClient(m.currentSess, card.window.Index); err != nil {
+		// Single-pane window: switch immediately.
+		if card.window.PaneCount <= 1 {
+			if err := m.tmux.SelectPane(m.currentSess, card.window.Index, 0); err != nil {
+				m.setStatusError(err.Error())
+			} else {
+				return m, tea.Quit
+			}
+			return m, nil
+		}
+		if err := m.loadPanes(m.currentSess, card.window.Index); err != nil {
 			m.setStatusError(err.Error())
 		} else {
-			return m, tea.Quit
+			m.resetFilter()
+			m.currentMode = ModePaneGrid
+			m.applyLayout()
+			return m, m.syncPreview()
 		}
+
+	case ModePaneGrid:
+		// Leaf level: Enter acts same as Space (switch & quit).
+		return m.handleQuickSwap()
 	}
 	return m, nil
 }
 
-// handleQuickSwap quick-switches to a session's active window.
+// handleDirectSwitch switches to the active pane of the focused item
+// immediately, regardless of the current view level.
+// - Session view: switches to the session (tmux picks active window/pane).
+// - Window view: switches to the window (tmux picks active pane).
+// - Pane view: switches to the exact pane.
+func (m *Model) handleDirectSwitch() (tea.Model, tea.Cmd) {
+	return m.handleQuickSwap()
+}
+
+// handleQuickSwap switches to the focused item at any level.
 func (m *Model) handleQuickSwap() (tea.Model, tea.Cmd) {
-	if m.currentMode != ModeSessionGrid {
-		return m, nil
-	}
-	card, ok := m.sessionGrid.GetFocused().(SessionCard)
-	if !ok || card.session.WindowCount == 0 {
-		return m, nil
+	var err error
+	switch m.currentMode {
+	case ModeSessionGrid:
+		card, ok := m.sessionGrid.GetFocused().(SessionCard)
+		if !ok || card.session.WindowCount == 0 {
+			return m, nil
+		}
+		err = m.tmux.SwitchToSession(card.session.Name)
+
+	case ModeWindowGrid:
+		card, ok := m.windowGrid.GetFocused().(WindowCard)
+		if !ok {
+			return m, nil
+		}
+		err = m.tmux.SwitchClient(m.currentSess, card.window.Index)
+
+	case ModePaneGrid:
+		card, ok := m.paneGrid.GetFocused().(PaneCard)
+		if !ok {
+			return m, nil
+		}
+		err = m.tmux.SelectPane(m.currentSess, m.currentWin, card.pane.Index)
 	}
 
-	if err := m.tmux.SwitchToSession(card.session.Name); err != nil {
+	if err != nil {
 		m.setStatusError(err.Error())
 		return m, nil
 	}
@@ -363,10 +437,13 @@ func (m *Model) handleQuickSwap() (tea.Model, tea.Cmd) {
 // enterMarkingMode puts the model into mark-assignment mode.
 func (m *Model) enterMarkingMode() {
 	m.markingMode = true
-	if m.currentMode == ModeSessionGrid {
+	switch m.currentMode {
+	case ModeSessionGrid:
 		m.markingTarget = "session"
-	} else {
+	case ModeWindowGrid:
 		m.markingTarget = "window"
+	case ModePaneGrid:
+		m.markingTarget = "pane"
 	}
 }
 
@@ -412,6 +489,18 @@ func (m *Model) handleMarkAssignment(keyStr string) (tea.Model, tea.Cmd) {
 		} else {
 			m.setStatus(fmt.Sprintf("Marked %s:%d -> [%s]", m.currentSess, card.window.Index, keyStr))
 		}
+
+	case "pane":
+		card, ok := m.paneGrid.GetFocused().(PaneCard)
+		if !ok {
+			return m, nil
+		}
+		m.config.SetMark(keyStr, m.currentSess, m.currentWin, card.pane.Index)
+		if err := config.SaveState(m.config); err != nil {
+			m.setStatusError(fmt.Sprintf("Failed to save: %v", err))
+		} else {
+			m.setStatus(fmt.Sprintf("Marked %s:%d.%d -> [%s]", m.currentSess, m.currentWin, card.pane.Index, keyStr))
+		}
 	}
 
 	return m, nil
@@ -426,7 +515,10 @@ func (m *Model) handleJumpToMark(keyStr string) (tea.Model, tea.Cmd) {
 	}
 
 	var err error
-	if mark.WindowIndex < 0 {
+	if mark.PaneIndex > 0 {
+		// Pane-level mark: switch to exact pane.
+		err = m.tmux.SelectPane(mark.SessionName, mark.WindowIndex, mark.PaneIndex)
+	} else if mark.WindowIndex < 0 {
 		// Session-level mark: let tmux pick the active window.
 		err = m.tmux.SwitchToSession(mark.SessionName)
 	} else {
@@ -461,6 +553,10 @@ func (m *Model) syncPreview() tea.Cmd {
 		if card, ok := m.windowGrid.GetFocused().(WindowCard); ok {
 			m.previewPanel.SetWindowMetadata(card.window)
 		}
+	case ModePaneGrid:
+		if card, ok := m.paneGrid.GetFocused().(PaneCard); ok {
+			m.previewPanel.SetPaneMetadata(card.pane)
+		}
 	}
 	return nil
 }
@@ -470,6 +566,8 @@ func (m *Model) syncPreview() tea.Cmd {
 func (m *Model) fetchCapture() tea.Cmd {
 	var sessName string
 	winIdx := -1 // -1 = active window of the session
+
+	paneIdx := 0
 
 	switch m.currentMode {
 	case ModeSessionGrid:
@@ -485,12 +583,20 @@ func (m *Model) fetchCapture() tea.Cmd {
 		}
 		sessName = m.currentSess
 		winIdx = card.window.Index
+	case ModePaneGrid:
+		card, ok := m.paneGrid.GetFocused().(PaneCard)
+		if !ok {
+			return nil
+		}
+		sessName = m.currentSess
+		winIdx = m.currentWin
+		paneIdx = card.pane.Index
 	default:
 		return nil
 	}
 
 	return func() tea.Msg {
-		content, err := m.tmux.CapturePane(sessName, winIdx, 0)
+		content, err := m.tmux.CapturePane(sessName, winIdx, paneIdx)
 		if err != nil {
 			return captureResultMsg{"(capture error: " + err.Error() + ")"}
 		}
@@ -513,6 +619,10 @@ func (m *Model) moveFocus(dx, dy int) tea.Cmd {
 
 // handleReorder swaps the focused item with its neighbor and persists the new order.
 func (m *Model) handleReorder(dx, dy int) (tea.Model, tea.Cmd) {
+	if m.currentMode == ModePaneGrid {
+		return m, nil // reordering panes is not supported
+	}
+
 	grid := m.activeGrid()
 	if !grid.MoveItem(dx, dy) {
 		return m, nil

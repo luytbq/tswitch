@@ -61,6 +61,30 @@ func (c WindowCard) Indicator() string {
 // Deprecated: kept for backward compat with mark map lookup that uses Title().
 func (c WindowCard) GetName() string { return c.Title() }
 
+// PaneCard wraps a tmux.Pane for grid display.
+type PaneCard struct {
+	pane tmux.Pane
+}
+
+func (c PaneCard) Title() string {
+	return fmt.Sprintf("Pane %d", c.pane.Index)
+}
+
+func (c PaneCard) Subtitle() string {
+	dir := c.pane.WorkingDir
+	if idx := lastIndexByte(dir, '/'); idx >= 0 && idx < len(dir)-1 {
+		dir = dir[idx+1:]
+	}
+	return c.pane.Command + " · " + dir
+}
+
+func (c PaneCard) Indicator() string {
+	if c.pane.Active {
+		return "●"
+	}
+	return ""
+}
+
 // lastIndexByte returns the index of the last instance of c in s, or -1.
 func lastIndexByte(s string, c byte) int {
 	for i := len(s) - 1; i >= 0; i-- {

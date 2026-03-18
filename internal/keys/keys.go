@@ -13,9 +13,10 @@ const (
 	ActionMoveRight
 
 	// Selection
-	ActionConfirm   // enter - drill into / switch
-	ActionQuickSwap // space - quick switch
-	ActionBack      // esc - go back or quit
+	ActionConfirm      // o - drill into child view
+	ActionQuickSwap    // space - quick switch
+	ActionDirectSwitch // enter - switch to active pane immediately
+	ActionBack         // esc - go back or quit
 
 	// Marks
 	ActionStartMark // m - enter marking mode
@@ -45,11 +46,11 @@ const (
 // reservedKeys are keys that cannot be used as mark assignments.
 // Kept as a map for O(1) lookup.
 var reservedKeys = map[string]bool{
-	"esc": true, "enter": true, "space": true, "tab": true,
+	"esc": true, "enter": true, " ": true, "tab": true,
 	"up": true, "down": true, "left": true, "right": true,
 	"j": true, "k": true, "h": true, "l": true,
 	"?": true, "q": true, "m": true, "/": true,
-	"f": true,
+	"f": true, "o": true,
 	"n": true, "r": true, "x": true, "t": true,
 	"H": true, "J": true, "K": true, "L": true,
 }
@@ -64,8 +65,9 @@ var defaultKeymap = map[string]Action{
 	"K": ActionReorderUp, "J": ActionReorderDown,
 	"H": ActionReorderLeft, "L": ActionReorderRight,
 
-	"enter": ActionConfirm,
-	"space": ActionQuickSwap,
+	"o":     ActionConfirm,
+	"enter": ActionDirectSwitch,
+	" ":     ActionQuickSwap,
 	"esc":   ActionBack,
 
 	"m": ActionStartMark,
@@ -90,6 +92,7 @@ var actionToName = map[Action]string{
 	ActionMoveRight:      "move_right",
 	ActionConfirm:        "confirm",
 	ActionQuickSwap:      "quick_swap",
+	ActionDirectSwitch:   "direct_switch",
 	ActionBack:           "back",
 	ActionStartMark:      "start_mark",
 	ActionNew:            "new",

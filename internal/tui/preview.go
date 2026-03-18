@@ -99,6 +99,29 @@ func (pp *PreviewPanel) SetWindowMetadata(window tmux.Window) {
 	pp.content = strings.Join(lines, "\n")
 }
 
+// SetPaneMetadata populates the panel for a pane.
+func (pp *PreviewPanel) SetPaneMetadata(pane tmux.Pane) {
+	pp.title = "Pane"
+
+	var lines []string
+	lines = append(lines, pp.styles.CardTitle.Render(fmt.Sprintf("Pane %d", pane.Index)))
+	lines = append(lines, "")
+
+	active := "no"
+	if pane.Active {
+		active = pp.styles.CardAttached.Render("yes")
+	}
+
+	lines = append(lines, fmt.Sprintf("Command:     %s", pane.Command))
+	lines = append(lines, fmt.Sprintf("Active:      %s", active))
+	lines = append(lines, fmt.Sprintf("Size:        %dx%d", pane.Width, pane.Height))
+	if pane.WorkingDir != "" {
+		lines = append(lines, fmt.Sprintf("Dir:         %s", pane.WorkingDir))
+	}
+
+	pp.content = strings.Join(lines, "\n")
+}
+
 // SetCaptureContent sets raw capture-pane output.
 func (pp *PreviewPanel) SetCaptureContent(content string) {
 	pp.content = content
