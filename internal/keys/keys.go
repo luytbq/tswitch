@@ -120,9 +120,11 @@ func init() {
 	}
 }
 
-// ApplyOverrides replaces default key bindings with user-specified overrides.
+// ApplyOverrides adds user-specified key bindings on top of the defaults.
 // Each entry maps an action name (e.g. "quit") to a key string (e.g. "Q").
-// The old key for that action is removed; the new key is registered.
+// If the new key is already bound to a different action, that conflicting
+// binding is removed. Existing bindings for the same action are preserved
+// (e.g. arrow keys remain alongside hjkl overrides).
 func ApplyOverrides(overrides map[string]string) {
 	for actionName, newKey := range overrides {
 		action, ok := nameToAction[actionName]
@@ -130,12 +132,9 @@ func ApplyOverrides(overrides map[string]string) {
 			continue // unknown action name, skip
 		}
 
-		// Remove old key(s) bound to this action.
-		for key, a := range defaultKeymap {
-			if a == action {
-				delete(defaultKeymap, key)
-				delete(reservedKeys, key)
-			}
+		// Remove conflicting binding: if newKey is bound to a *different* action, drop it.
+		if existing, bound := defaultKeymap[newKey]; bound && existing != action {
+			delete(defaultKeymap, newKey)
 		}
 
 		// Add new binding.
