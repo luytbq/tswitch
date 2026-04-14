@@ -38,27 +38,31 @@ The codebase has three main layers:
 - Handles the marks system (single-key bookmarks for sessions/windows), session tags, and user settings
 - Falls back to sensible defaults when config is absent
 
-### 3. TUI Layer (`internal/tui/`)
+### 3. Keys Layer (`internal/keys/`)
+- `keys.go` — `Action` enum decouples key presses from business logic; supports vim (hjkl) and arrow keys. `ApplyOverrides` merges user config on top of defaults without wiping untouched bindings.
+
+### 4. TUI Layer (`internal/tui/`)
 - Follows the Bubbletea MVU pattern: `Model` → `Update` → `View`
-- `model.go` — Central state: current mode, sessions list, focus index, search query, preview visibility
+- `model.go` — Central state: current mode, sessions list, focus index, search query, preview visibility, active dialog
 - `handler.go` — Maps key input (`keys.Action`) to state mutations and TMUX commands
 - `grid.go` — Responsive grid layout; calculates columns dynamically from terminal width using fixed card dimensions (22-char content width); manages focus navigation (flat index ↔ row/col conversion)
-- `view.go` — Top-level rendering, assembles grid + preview panel
+- `view.go` — Top-level rendering, assembles grid + preview panel + dialog overlay
 - `cards.go` — `SessionCard` and `WindowCard` implement the `GridItem` interface for polymorphic display
 - `preview.go` — Toggleable side panel (Tab key) showing session metadata or pane capture
 - `filter.go` — Fuzzy search filtering via `github.com/sahilm/fuzzy`
+- `dialog.go` — Modal confirm/input overlays (e.g. rename, kill-session confirmation)
+- `browse.go` — `tea.ExecProcess`-based fzf browser over `appConfig.BrowseDirs` for creating/attaching sessions rooted in a chosen directory
 - `styles.go` — All Lipgloss styling constants
-- `keys/keys.go` — `Action` enum decouples key presses from business logic; supports vim (hjkl) and arrow keys
 
 ### Navigation State Machine
 
 ```
 ModeSessionGrid  ←── Esc ──  ModeWindowGrid
       │                            ↑
-      └─── Enter / l ─────────────►┘
+      └──────── 'o' ───────────────┘
 ```
 
-Two modes: `ModeSessionGrid` (top-level) and `ModeWindowGrid` (drilled into a session's windows). Space switches to the focused item's active window immediately.
+Two modes: `ModeSessionGrid` (top-level) and `ModeWindowGrid` (drilled into a session's windows). `o` (ActionConfirm) drills into the focused session. `Enter` (ActionDirectSwitch) switches immediately to the focused item without drilling. `l` is grid-right movement, not drill-down.
 
 ### Key Design Patterns
 - **Interface-based**: `tmux.Service` and `Executor` interfaces allow command-execution to be swapped (e.g., for testing)
