@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"runtime/debug"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -14,7 +15,24 @@ import (
 	"github.com/luytbq/tswitch/internal/tui"
 )
 
+// version is populated by -ldflags "-X main.version=..." during `make build`.
+// When installed via `go install module@version` there are no ldflags, so fall
+// back to the module version embedded by the Go toolchain in build info.
 var version = "dev"
+
+func resolveVersion() string {
+	if version != "dev" {
+		return version
+	}
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return version
+	}
+	if v := info.Main.Version; v != "" && v != "(devel)" {
+		return v
+	}
+	return version
+}
 
 func main() {
 	// Load JSON app config and apply key overrides before anything else.
@@ -27,7 +45,7 @@ func main() {
 	}
 
 	if len(os.Args) > 1 && os.Args[1] == "version" {
-		fmt.Println("tswitch " + version)
+		fmt.Println("tswitch " + resolveVersion())
 		return
 	}
 
