@@ -74,20 +74,42 @@ Reload with `tmux source-file ~/.tmux.conf`, then press `prefix + s` to open.
 
 ## Configuration
 
-### Custom key bindings — `tswitch-config.json`
+### `tswitch-config.json`
 
-Override default keys by placing a `tswitch-config.json` file next to the binary or in `~/.tswitch/`. The file is checked in that order; the first one found wins.
+tswitch looks for `tswitch-config.json` in two locations, in this order:
+
+1. **Next to the binary** — the same directory as the `tswitch` executable (e.g. `~/go/bin/tswitch-config.json` if you installed via `go install`).
+2. **User home** — `~/.tswitch/tswitch-config.json`.
+
+The first file found wins; if neither exists, tswitch runs with defaults (no custom keys, no browse directories).
+
+A complete reference config listing every supported key binding, `browse_dirs`, and `browse_exclude` is checked into the repo at [`tswitch-config.json`](./tswitch-config.json) — use it as a starting template. Save it to `~/.tswitch/tswitch-config.json` and it will be picked up by any `tswitch` binary on your system.
+
+Example config:
 
 ```json
 {
   "keys": {
     "quit": "Q",
     "filter": "f"
-  }
+  },
+  "browse_dirs": [
+    {"path": "~/projects", "depth": 4},
+    {"path": "~/.config", "depth": 3}
+  ],
+  "browse_exclude": [
+    ".git",
+    "node_modules",
+    "vendor"
+  ]
 }
 ```
 
-Action names match the defaults: `move_up`, `move_down`, `move_left`, `move_right`, `confirm`, `quick_swap`, `back`, `start_mark`, `new`, `rename`, `kill`, `tag`, `reorder_up`, `reorder_down`, `reorder_left`, `reorder_right`, `toggle_preview`, `toggle_help`, `filter`, `quit`.
+**`keys`** — override default key bindings. Action names: `move_up`, `move_down`, `move_left`, `move_right`, `confirm`, `quick_swap`, `back`, `start_mark`, `new`, `rename`, `kill`, `cut`, `paste`, `tag`, `reorder_up`, `reorder_down`, `reorder_left`, `reorder_right`, `toggle_preview`, `toggle_help`, `filter`, `quit`.
+
+**`browse_dirs`** — directories that `tswitch browse` scans for subdirectories to open as new tmux sessions. Each entry is a `{path, depth}` pair; `depth` is how many levels to descend.
+
+**`browse_exclude`** — directory names to skip while scanning `browse_dirs` (matched by basename).
 
 ### Runtime state — `~/.tswitch/state.yaml`
 
@@ -98,6 +120,8 @@ Auto-managed by tswitch. Stores marks, session/window ordering, and tags. You no
 **No sessions found** — make sure tmux is running (`tmux list-sessions`).
 
 **Popup doesn't work** — tmux 3.2+ is required for `display-popup`. Check with `tmux -V`.
+
+**`tswitch browse` prints `Error: no browse directories configured`** — either no `tswitch-config.json` was found in the two lookup locations (see [Configuration](#tswitch-configjson)), or the config file exists but has no `browse_dirs` entries. Add a `browse_dirs` array and restart.
 
 ## License
 
