@@ -12,6 +12,8 @@
     "new": "n",
     "rename": "r",
     "kill": "d",
+    "cut": "x",
+    "paste": "p",
     "tag": "t",
     "reorder_up": "K",
     "reorder_down": "J",

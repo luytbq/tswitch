@@ -617,6 +617,117 @@ func (m *Model) moveFocus(dx, dy int) tea.Cmd {
 	return m.syncPreview()
 }
 
+// ---------------------------------------------------------------------------
+// Cut / Paste (move window / pane)
+// ---------------------------------------------------------------------------
+
+// handleCut captures the focused window or pane onto m.clipboard. A second
+// press while the clipboard is already set clears it (toggle).
+func (m *Model) handleCut() (tea.Model, tea.Cmd) {
+	if m.clipboard != nil {
+		m.clipboard = nil
+		m.setStatus("cut cleared")
+		return m, nil
+	}
+
+	switch m.currentMode {
+	case ModeWindowGrid:
+		card, ok := m.windowGrid.GetFocused().(WindowCard)
+		if !ok {
+			return m, nil
+		}
+		m.clipboard = &clipboard{
+			kind:    "window",
+			srcSess: m.currentSess,
+			srcWin:  card.window.Index,
+			label:   fmt.Sprintf("window %q from %s", card.window.Name, m.currentSess),
+		}
+		m.setStatus("cut: " + m.clipboard.label)
+
+	case ModePaneGrid:
+		card, ok := m.paneGrid.GetFocused().(PaneCard)
+		if !ok {
+			return m, nil
+		}
+		m.clipboard = &clipboard{
+			kind:    "pane",
+			srcSess: m.currentSess,
+			srcWin:  m.currentWin,
+			srcPane: card.pane.Index,
+			label:   fmt.Sprintf("pane %d from %s:%d", card.pane.Index, m.currentSess, m.currentWin),
+		}
+		m.setStatus("cut: " + m.clipboard.label)
+
+	case ModeSessionGrid:
+		m.setStatusError("nothing to cut here")
+	}
+	return m, nil
+}
+
+// handlePaste commits the clipboard onto the focused destination, validating
+// that the current mode matches the clipboard kind.
+func (m *Model) handlePaste() (tea.Model, tea.Cmd) {
+	cb := m.clipboard
+	if cb == nil {
+		m.setStatusError("clipboard is empty")
+		return m, nil
+	}
+
+	switch cb.kind {
+	case "window":
+		if m.currentMode != ModeSessionGrid {
+			m.setStatusError("paste a window on a session (back out first)")
+			return m, nil
+		}
+		card, ok := m.sessionGrid.GetFocused().(SessionCard)
+		if !ok {
+			return m, nil
+		}
+		if card.session.Name == cb.srcSess {
+			m.setStatusError("already in this session")
+			return m, nil
+		}
+		if err := m.tmux.MoveWindow(cb.srcSess, cb.srcWin, card.session.Name); err != nil {
+			m.setStatusError(err.Error())
+			return m, nil
+		}
+		m.setStatus(fmt.Sprintf("moved %s → %s", cb.label, card.session.Name))
+		m.clipboard = nil
+		_ = m.loadSessions()
+		m.applyFilter()
+		return m, m.syncPreview()
+
+	case "pane":
+		switch m.currentMode {
+		case ModeSessionGrid:
+			m.setStatusError("cannot paste pane onto session — drill in and pick a window")
+			return m, nil
+		case ModePaneGrid:
+			m.setStatusError("cannot paste pane onto a pane — back out to window grid")
+			return m, nil
+		}
+		// ModeWindowGrid
+		card, ok := m.windowGrid.GetFocused().(WindowCard)
+		if !ok {
+			return m, nil
+		}
+		if m.currentSess == cb.srcSess && card.window.Index == cb.srcWin {
+			m.setStatusError("already in this window")
+			return m, nil
+		}
+		if err := m.tmux.JoinPane(cb.srcSess, cb.srcWin, cb.srcPane, m.currentSess, card.window.Index); err != nil {
+			m.setStatusError(err.Error())
+			return m, nil
+		}
+		m.setStatus(fmt.Sprintf("moved %s → %s:%d", cb.label, m.currentSess, card.window.Index))
+		m.clipboard = nil
+		_ = m.loadWindows(m.currentSess)
+		m.applyFilter()
+		return m, m.syncPreview()
+	}
+	return m, nil
+}
+
 // handleReorder swaps the focused item with its neighbor and persists the new order.
 func (m *Model) handleReorder(dx, dy int) (tea.Model, tea.Cmd) {
 	if m.currentMode == ModePaneGrid {

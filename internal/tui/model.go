@@ -11,6 +11,15 @@ import (
 	"github.com/luytbq/tswitch/internal/tmux"
 )
 
+// clipboard holds a cut window or pane awaiting paste.
+type clipboard struct {
+	kind    string // "window" or "pane"
+	srcSess string
+	srcWin  int    // window index (both kinds)
+	srcPane int    // pane kind only
+	label   string // e.g. `window "editor" from work`
+}
+
 // Mode represents the current navigation level.
 type Mode int
 
@@ -49,6 +58,7 @@ type Model struct {
 	filterQuery   string // current fuzzy-search term
 	dialog        *Dialog
 	pendingAction dialogAction
+	clipboard     *clipboard
 
 	// Viewport.
 	width  int
@@ -205,6 +215,12 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keys.ActionKill:
 		return m.handleKill()
+
+	case keys.ActionCut:
+		return m.handleCut()
+
+	case keys.ActionPaste:
+		return m.handlePaste()
 
 	case keys.ActionMoveUp:
 		return m, m.moveFocus(0, -1)

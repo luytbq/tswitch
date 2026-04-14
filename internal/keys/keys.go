@@ -24,7 +24,9 @@ const (
 	// Management (future)
 	ActionNew    // n
 	ActionRename // r
-	ActionKill   // x
+	ActionKill   // d - delete (moved from x)
+	ActionCut    // x - cut window/pane to clipboard
+	ActionPaste  // p - paste clipboard onto focused destination
 	ActionTag    // t
 
 	// Reorder
@@ -51,7 +53,7 @@ var reservedKeys = map[string]bool{
 	"j": true, "k": true, "h": true, "l": true,
 	"?": true, "q": true, "m": true, "/": true,
 	"f": true, "o": true,
-	"n": true, "r": true, "x": true, "t": true,
+	"n": true, "r": true, "d": true, "x": true, "p": true, "t": true,
 	"H": true, "J": true, "K": true, "L": true,
 }
 
@@ -75,7 +77,9 @@ var defaultKeymap = map[string]Action{
 	"f": ActionBrowseDirs,
 	"n": ActionNew,
 	"r": ActionRename,
-	"x": ActionKill,
+	"d": ActionKill,
+	"x": ActionCut,
+	"p": ActionPaste,
 	"t": ActionTag,
 
 	"tab": ActionTogglePreview,
@@ -98,6 +102,8 @@ var actionToName = map[Action]string{
 	ActionNew:            "new",
 	ActionRename:         "rename",
 	ActionKill:           "kill",
+	ActionCut:            "cut",
+	ActionPaste:          "paste",
 	ActionTag:            "tag",
 	ActionReorderUp:      "reorder_up",
 	ActionReorderDown:    "reorder_down",

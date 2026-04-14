@@ -253,6 +253,28 @@ func (c *Client) KillWindow(sessionName string, windowIndex int) error {
 	return err
 }
 
+// MoveWindow moves a window from one session to another, appending it to the
+// end of the destination session's window list.
+func (c *Client) MoveWindow(srcSession string, srcIndex int, dstSession string) error {
+	src := fmt.Sprintf("%s:%d", srcSession, srcIndex)
+	dst := fmt.Sprintf("%s:", dstSession) // trailing colon = append to end
+	_, err := c.exec.Run("move-window", "-s", src, "-t", dst)
+	return err
+}
+
+// ---------------------------------------------------------------------------
+// Pane management
+// ---------------------------------------------------------------------------
+
+// JoinPane moves a pane from one window into another (possibly in a different
+// session), joining the end of the destination window's pane list.
+func (c *Client) JoinPane(srcSession string, srcWindow, srcPane int, dstSession string, dstWindow int) error {
+	src := fmt.Sprintf("%s:%d.%d", srcSession, srcWindow, srcPane)
+	dst := fmt.Sprintf("%s:%d", dstSession, dstWindow)
+	_, err := c.exec.Run("join-pane", "-s", src, "-t", dst)
+	return err
+}
+
 // ---------------------------------------------------------------------------
 // Parsing helpers
 // ---------------------------------------------------------------------------

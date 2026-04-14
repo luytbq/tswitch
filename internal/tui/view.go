@@ -66,7 +66,9 @@ func (m *Model) renderHelp() string {
 	b.WriteString("\n")
 	writeHelpLine(&b, s, "n", "New session / window")
 	writeHelpLine(&b, s, "r", "Rename session / window")
-	writeHelpLine(&b, s, "x", "Kill session / window")
+	writeHelpLine(&b, s, "d", "Kill session / window")
+	writeHelpLine(&b, s, "x", "Cut window/pane (toggle to clear)")
+	writeHelpLine(&b, s, "p", "Paste cut window/pane onto focus")
 	writeHelpLine(&b, s, "H/J/K/L", "Reorder items")
 	writeHelpLine(&b, s, "f", "Browse dirs (fzf)")
 
@@ -100,7 +102,12 @@ func (m *Model) renderLayout(header, separator, grid, preview string) string {
 	paddedGrid := lipgloss.NewStyle().Width(usedW).Render(grid)
 	main := lipgloss.JoinHorizontal(lipgloss.Top, paddedGrid, " ", preview)
 
-	full := lipgloss.JoinVertical(lipgloss.Left, header, separator, main, m.renderStatusBar())
+	var full string
+	if banner := m.renderClipboardBanner(); banner != "" {
+		full = lipgloss.JoinVertical(lipgloss.Left, header, banner, separator, main, m.renderStatusBar())
+	} else {
+		full = lipgloss.JoinVertical(lipgloss.Left, header, separator, main, m.renderStatusBar())
+	}
 
 	// Clamp output to terminal height so long preview content doesn't push
 	// the grid off-screen.
@@ -109,6 +116,17 @@ func (m *Model) renderLayout(header, separator, grid, preview string) string {
 		lines = lines[:m.height]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// renderClipboardBanner returns a one-line banner shown above the grid when
+// a cut is pending. Returns "" when the clipboard is empty.
+func (m *Model) renderClipboardBanner() string {
+	if m.clipboard == nil {
+		return ""
+	}
+	s := m.styles
+	text := fmt.Sprintf("[CUT] %s  —  p=paste  x=clear", m.clipboard.label)
+	return s.StatusSuccess.Render(text)
 }
 
 func (m *Model) renderStatusBar() string {
@@ -126,13 +144,13 @@ func (m *Model) renderStatusBar() string {
 	switch m.currentMode {
 	case ModeSessionGrid:
 		modeLabel = s.StatusMode.Render("SESSIONS")
-		hints = " hjkl:nav  enter:drill  space:switch  /:search  n:new  r:rename  x:kill  m:mark  f:browse  ?:help  q:quit"
+		hints = " hjkl:nav  enter:drill  space:switch  /:search  n:new  r:rename  d:kill  p:paste  m:mark  f:browse  ?:help  q:quit"
 	case ModeWindowGrid:
 		modeLabel = s.StatusMode.Render("WINDOWS")
-		hints = " hjkl:nav  enter:drill  space:switch  /:search  n:new  r:rename  x:kill  m:mark  esc:back  ?:help  q:quit"
+		hints = " hjkl:nav  enter:drill  space:switch  /:search  n:new  r:rename  d:kill  x:cut  p:paste  m:mark  esc:back  ?:help  q:quit"
 	case ModePaneGrid:
 		modeLabel = s.StatusMode.Render("PANES")
-		hints = " hjkl:nav  enter:select  space:switch  /:search  m:mark  esc:back  ?:help  q:quit"
+		hints = " hjkl:nav  enter:select  space:switch  /:search  x:cut  m:mark  esc:back  ?:help  q:quit"
 	}
 	left := modeLabel + s.StatusHints.Render(hints)
 

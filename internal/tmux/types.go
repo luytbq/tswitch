@@ -32,6 +32,10 @@ type Service interface {
 	NewWindow(sessionName string, windowName string) error
 	RenameWindow(sessionName string, windowIndex int, newName string) error
 	KillWindow(sessionName string, windowIndex int) error
+	MoveWindow(srcSession string, srcIndex int, dstSession string) error
+
+	// Pane management
+	JoinPane(srcSession string, srcWindow, srcPane int, dstSession string, dstWindow int) error
 }
 
 // Session represents a TMUX session.
