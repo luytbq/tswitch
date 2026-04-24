@@ -281,6 +281,10 @@ func (m *Model) loadSessions() error {
 		items[i] = SessionCard{s}
 	}
 	m.sessionGrid.SetItems(items)
+	m.sessionGrid.FocusFirstWhere(func(item GridItem) bool {
+		sc, ok := item.(SessionCard)
+		return ok && sc.session.Attached
+	})
 	return nil
 }
 
