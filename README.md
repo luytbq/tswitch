@@ -37,13 +37,20 @@ go build -o tswitch
 
 ## tmux Integration
 
-Add to your `~/.tmux.conf` to launch tswitch as a popup overlay:
+Add to your `~/.tmux.conf`:
 
 ```tmux
+# Open session/window switcher as a popup
 bind-key s display-popup -E -w 80% -h 80% "tswitch"
+
+# Switch to the previous session
+bind-key l run-shell "tswitch last"
+
+# Open directory browser as a popup (requires fzf + browse_dirs config)
+bind-key f display-popup -E -w 80% -h 80% "tswitch browse"
 ```
 
-Reload with `tmux source-file ~/.tmux.conf`, then press `prefix + s` to open.
+Reload with `tmux source-file ~/.tmux.conf`. Requires tmux 3.2+ for `display-popup`.
 
 ## Subcommands
 
