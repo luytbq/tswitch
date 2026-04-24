@@ -5,7 +5,7 @@ A grid-based TUI for browsing and switching tmux sessions and windows.
 ## Features
 
 - **Grid layout** — responsive card grid that auto-fits columns to terminal width
-- **Two-level navigation** — browse sessions, drill into windows
+- **Three-level navigation** — browse sessions, drill into windows, drill into panes
 - **Fuzzy search** — filter sessions and windows by name
 - **Marks** — bookmark sessions/windows with single-key hotkeys for instant switching
 - **Preview panel** — toggle between pane capture and session/window metadata
@@ -57,9 +57,10 @@ Reload with `tmux source-file ~/.tmux.conf`, then press `prefix + s` to open.
 | Key | Action |
 |-----|--------|
 | `h/j/k/l` or arrows | Navigate the grid |
-| `Enter` | Drill into session / switch to window |
+| `o` | Drill into focused item (session → windows → panes) |
+| `Enter` | Switch directly to focused item |
 | `Space` | Quick-switch to session's active window |
-| `Esc` | Back to sessions / quit |
+| `Esc` | Back one level / quit |
 | `H/J/K/L` | Reorder focused item (Shift + direction) |
 | `m` + key | Mark current item with a hotkey |
 | _mark key_ | Jump to marked session/window |
@@ -67,7 +68,9 @@ Reload with `tmux source-file ~/.tmux.conf`, then press `prefix + s` to open.
 | `Tab` | Toggle preview panel |
 | `n` | New session or window |
 | `r` | Rename focused item |
-| `x` | Kill focused item (with confirmation) |
+| `d` | Kill focused item (with confirmation) |
+| `x` | Cut focused window/pane to clipboard |
+| `p` | Paste clipboard onto focused destination |
 | `t` | Tag focused session |
 | `?` | Help overlay |
 | `q` | Quit |
