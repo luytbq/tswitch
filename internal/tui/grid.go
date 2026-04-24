@@ -113,7 +113,14 @@ func (g *Grid) MoveItem(dx, dy int) bool {
 	}
 
 	newIndex := newRow*g.columns + newCol
-	if newIndex < 0 || newIndex >= len(g.items) {
+	if newIndex < 0 {
+		return false
+	}
+	if newIndex >= len(g.items) {
+		// Target cell doesn't exist (incomplete last row); clamp to last item.
+		newIndex = len(g.items) - 1
+	}
+	if newIndex == g.focusIndex {
 		return false
 	}
 
