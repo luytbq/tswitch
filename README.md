@@ -110,7 +110,17 @@ Example config:
 
 **`keys`** — override default key bindings. Action names: `move_up`, `move_down`, `move_left`, `move_right`, `confirm`, `quick_swap`, `back`, `start_mark`, `new`, `rename`, `kill`, `cut`, `paste`, `tag`, `reorder_up`, `reorder_down`, `reorder_left`, `reorder_right`, `toggle_preview`, `toggle_help`, `filter`, `quit`.
 
-**`browse_dirs`** — directories that `tswitch browse` scans for subdirectories to open as new tmux sessions. Each entry is a `{path, depth}` pair; `depth` is how many levels to descend.
+**`browse_dirs`** — directories that `tswitch browse` scans for subdirectories to open as new tmux sessions. Each entry is a `{path, depth}` pair; `depth` is how many levels to descend. Requires [`fzf`](https://github.com/junegunn/fzf) to be available in `PATH`.
+
+Install `fzf`:
+
+| OS | Command |
+|----|---------|
+| macOS | `brew install fzf` |
+| Ubuntu / Debian | `sudo apt install fzf` |
+| Fedora | `sudo dnf install fzf` |
+| Arch Linux | `sudo pacman -S fzf` |
+| Any (Go) | `go install github.com/junegunn/fzf@latest` |
 
 **`browse_exclude`** — directory names to skip while scanning `browse_dirs` (matched by basename).
 
