@@ -33,6 +33,7 @@ type Service interface {
 	RenameWindow(sessionName string, windowIndex int, newName string) error
 	KillWindow(sessionName string, windowIndex int) error
 	MoveWindow(srcSession string, srcIndex int, dstSession string) error
+	SwapWindow(sessionName string, srcIndex, dstIndex int) error
 
 	// Pane management
 	JoinPane(srcSession string, srcWindow, srcPane int, dstSession string, dstWindow int) error

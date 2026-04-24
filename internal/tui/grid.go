@@ -128,6 +128,18 @@ func (g *Grid) Items() []GridItem {
 	return g.items
 }
 
+// FocusIndex returns the current focus position.
+func (g *Grid) FocusIndex() int {
+	return g.focusIndex
+}
+
+// ReplaceItem replaces the item at the given position without changing focus or layout.
+func (g *Grid) ReplaceItem(pos int, item GridItem) {
+	if pos >= 0 && pos < len(g.items) {
+		g.items[pos] = item
+	}
+}
+
 // UsedWidth returns the actual width consumed by card columns.
 func (g *Grid) UsedWidth() int {
 	return g.usedWidth

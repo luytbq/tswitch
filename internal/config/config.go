@@ -149,6 +149,10 @@ func (c *Config) SetWindowOrder(session string, indices []int) {
 	c.WindowOrder[session] = indices
 }
 
+func (c *Config) ClearWindowOrder(session string) {
+	delete(c.WindowOrder, session)
+}
+
 // ---------------------------------------------------------------------------
 // Tags helpers
 // ---------------------------------------------------------------------------

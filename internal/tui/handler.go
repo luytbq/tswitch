@@ -735,13 +735,13 @@ func (m *Model) handleReorder(dx, dy int) (tea.Model, tea.Cmd) {
 	}
 
 	grid := m.activeGrid()
-	if !grid.MoveItem(dx, dy) {
-		return m, nil
-	}
 
 	// Extract and persist the new order.
 	switch m.currentMode {
 	case ModeSessionGrid:
+		if !grid.MoveItem(dx, dy) {
+			return m, nil
+		}
 		items := grid.Items()
 		order := make([]string, len(items))
 		for i, item := range items {
@@ -755,17 +755,42 @@ func (m *Model) handleReorder(dx, dy int) (tea.Model, tea.Cmd) {
 		}
 
 	case ModeWindowGrid:
-		items := grid.Items()
-		indices := make([]int, len(items))
-		for i, item := range items {
-			indices[i] = item.(WindowCard).window.Index
+		// Capture the two windows before the visual swap so we can call swap-window.
+		oldFocusPos := grid.FocusIndex()
+		srcCard := grid.Items()[oldFocusPos].(WindowCard)
+
+		if !grid.MoveItem(dx, dy) {
+			return m, nil
 		}
-		m.config.SetWindowOrder(m.currentSess, indices)
-		// Update m.windows to match new order.
+
+		newFocusPos := grid.FocusIndex()
+		dstCard := grid.Items()[oldFocusPos].(WindowCard)
+
+		// Swap the windows in TMUX to keep display order in sync with actual order.
+		if err := m.tmux.SwapWindow(m.currentSess, srcCard.window.Index, dstCard.window.Index); err != nil {
+			m.setStatusError(err.Error())
+			// Undo the visual swap so the grid stays consistent with TMUX.
+			grid.MoveItem(-dx, -dy)
+			return m, nil
+		}
+
+		// After swap-window, each window now occupies the other's index.
+		updatedSrc := srcCard.window
+		updatedSrc.Index = dstCard.window.Index
+		updatedDst := dstCard.window
+		updatedDst.Index = srcCard.window.Index
+		grid.ReplaceItem(newFocusPos, WindowCard{window: updatedSrc})
+		grid.ReplaceItem(oldFocusPos, WindowCard{window: updatedDst})
+
+		// Update m.windows to match new order and indices.
+		items := grid.Items()
 		m.windows = make([]tmux.Window, len(items))
 		for i, item := range items {
 			m.windows[i] = item.(WindowCard).window
 		}
+
+		// TMUX is now the source of truth; clear any saved visual override.
+		m.config.ClearWindowOrder(m.currentSess)
 	}
 
 	if err := config.SaveState(m.config); err != nil {

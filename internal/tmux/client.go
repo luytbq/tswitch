@@ -262,6 +262,14 @@ func (c *Client) MoveWindow(srcSession string, srcIndex int, dstSession string) 
 	return err
 }
 
+// SwapWindow swaps two windows within the same session by their indices.
+func (c *Client) SwapWindow(sessionName string, srcIndex, dstIndex int) error {
+	src := fmt.Sprintf("%s:%d", sessionName, srcIndex)
+	dst := fmt.Sprintf("%s:%d", sessionName, dstIndex)
+	_, err := c.exec.Run("swap-window", "-s", src, "-t", dst)
+	return err
+}
+
 // ---------------------------------------------------------------------------
 // Pane management
 // ---------------------------------------------------------------------------
