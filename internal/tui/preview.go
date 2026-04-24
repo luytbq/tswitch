@@ -32,7 +32,7 @@ func NewPreviewPanel(width, height int, styles Styles) *PreviewPanel {
 		width:  width,
 		height: height,
 		styles: styles,
-		mode:   PreviewMetadata,
+		mode:   PreviewCapture,
 		title:  "Preview",
 	}
 }

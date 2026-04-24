@@ -105,7 +105,6 @@ func NewModelWith(svc tmux.Service, appCfg *config.AppConfig) (*Model, error) {
 	if err := m.loadSessions(); err != nil {
 		m.setStatusError(err.Error())
 	}
-	m.syncPreview() //nolint — preview is always metadata on startup, cmd is nil
 
 	return m, nil
 }
@@ -121,7 +120,7 @@ type fzfResultMsg struct {
 
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
-	return nil
+	return m.syncPreview()
 }
 
 // Update implements tea.Model. It dispatches to focused handlers.
