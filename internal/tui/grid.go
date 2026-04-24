@@ -65,6 +65,7 @@ func (g *Grid) SetSize(width, height int) {
 	g.width = width
 	g.height = height
 	g.recalculate()
+	g.ensureVisible()
 }
 
 // SetMarks provides a mapping from item titles to mark key labels.
@@ -152,13 +153,12 @@ func (g *Grid) UsedWidth() int {
 	return g.usedWidth
 }
 
-// FocusFirstWhere moves focus to the first item satisfying match.
-// Does nothing if no item matches.
+// FocusFirstWhere moves focus to the first item satisfying match without
+// scrolling the viewport. Does nothing if no item matches.
 func (g *Grid) FocusFirstWhere(match func(GridItem) bool) {
 	for i, item := range g.items {
 		if match(item) {
 			g.focusIndex = i
-			g.ensureVisible()
 			return
 		}
 	}
@@ -179,7 +179,6 @@ func (g *Grid) Render() string {
 	}
 
 	g.recalculate()
-	g.ensureVisible()
 
 	effectiveRowH := cardRenderedHeight + cardRowGap
 	visibleRows := g.height / effectiveRowH
