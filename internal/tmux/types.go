@@ -48,6 +48,10 @@ type Session struct {
 	LastActive  time.Time
 	Width       int
 	Height      int
+	// Active pane state in the active window (populated from list-sessions).
+	ActivePaneDir   string
+	ActivePaneCmd   string
+	ActivePaneTitle string
 }
 
 // Window represents a TMUX window.
@@ -57,7 +61,10 @@ type Window struct {
 	PaneCount  int
 	Active     bool
 	Layout     string
-	WorkingDir string
+	WorkingDir string // CWD of the active pane (pane_current_path)
+	// Active pane state (populated from list-windows).
+	ActivePaneCmd   string
+	ActivePaneTitle string
 }
 
 // Pane represents a TMUX pane.
@@ -68,4 +75,5 @@ type Pane struct {
 	Height     int
 	Command    string
 	WorkingDir string
+	Title      string // pane_title — used for SSH/FTP connection detection
 }

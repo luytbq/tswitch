@@ -63,15 +63,25 @@ func (pp *PreviewPanel) SetSessionMetadata(session tmux.Session) {
 	lines = append(lines, pp.styles.CardTitle.Render(session.Name))
 	lines = append(lines, "")
 
-	attached := "no"
-	if session.Attached {
-		attached = pp.styles.CardAttached.Render("yes")
-	}
-
 	lines = append(lines, fmt.Sprintf("Windows:     %d", session.WindowCount))
-	lines = append(lines, fmt.Sprintf("Attached:    %s", attached))
 	lines = append(lines, fmt.Sprintf("Created:     %s", formatTime(session.Created)))
 	lines = append(lines, fmt.Sprintf("Last Active: %s", formatTime(session.LastActive)))
+
+	if session.ActivePaneCmd != "" || session.ActivePaneDir != "" {
+		lines = append(lines, "")
+		lines = append(lines, pp.styles.CardSubtle.Render("Active pane:"))
+		if ssh, ok := detectRemoteConnection(session.ActivePaneCmd, session.ActivePaneTitle); ok {
+			lines = append(lines, fmt.Sprintf("  Command:   %s", session.ActivePaneCmd))
+			lines = append(lines, fmt.Sprintf("  Remote:    %s", ssh.Display()))
+		} else {
+			if session.ActivePaneDir != "" {
+				lines = append(lines, fmt.Sprintf("  Dir:       %s", session.ActivePaneDir))
+			}
+			if session.ActivePaneCmd != "" {
+				lines = append(lines, fmt.Sprintf("  Command:   %s", session.ActivePaneCmd))
+			}
+		}
+	}
 
 	pp.content = strings.Join(lines, "\n")
 }
@@ -84,15 +94,20 @@ func (pp *PreviewPanel) SetWindowMetadata(window tmux.Window) {
 	lines = append(lines, pp.styles.CardTitle.Render(fmt.Sprintf("%d: %s", window.Index, window.Name)))
 	lines = append(lines, "")
 
-	active := "no"
-	if window.Active {
-		active = pp.styles.CardAttached.Render("yes")
-	}
-
 	lines = append(lines, fmt.Sprintf("Panes:       %d", window.PaneCount))
-	lines = append(lines, fmt.Sprintf("Active:      %s", active))
 	lines = append(lines, fmt.Sprintf("Layout:      %s", window.Layout))
-	if window.WorkingDir != "" {
+
+	if window.ActivePaneCmd != "" {
+		if ssh, ok := detectRemoteConnection(window.ActivePaneCmd, window.ActivePaneTitle); ok {
+			lines = append(lines, fmt.Sprintf("Command:     %s", window.ActivePaneCmd))
+			lines = append(lines, fmt.Sprintf("Remote:      %s", ssh.Display()))
+		} else {
+			if window.WorkingDir != "" {
+				lines = append(lines, fmt.Sprintf("Dir:         %s", window.WorkingDir))
+			}
+			lines = append(lines, fmt.Sprintf("Command:     %s", window.ActivePaneCmd))
+		}
+	} else if window.WorkingDir != "" {
 		lines = append(lines, fmt.Sprintf("Dir:         %s", window.WorkingDir))
 	}
 
@@ -107,23 +122,23 @@ func (pp *PreviewPanel) SetPaneMetadata(pane tmux.Pane) {
 	lines = append(lines, pp.styles.CardTitle.Render(fmt.Sprintf("Pane %d", pane.Index)))
 	lines = append(lines, "")
 
-	active := "no"
-	if pane.Active {
-		active = pp.styles.CardAttached.Render("yes")
+	if ssh, ok := detectRemoteConnection(pane.Command, pane.Title); ok {
+		lines = append(lines, fmt.Sprintf("Command:     %s", pane.Command))
+		lines = append(lines, fmt.Sprintf("Remote:      %s", ssh.Display()))
+	} else {
+		if pane.WorkingDir != "" {
+			lines = append(lines, fmt.Sprintf("Dir:         %s", pane.WorkingDir))
+		}
+		lines = append(lines, fmt.Sprintf("Command:     %s", pane.Command))
 	}
-
-	lines = append(lines, fmt.Sprintf("Command:     %s", pane.Command))
-	lines = append(lines, fmt.Sprintf("Active:      %s", active))
 	lines = append(lines, fmt.Sprintf("Size:        %dx%d", pane.Width, pane.Height))
-	if pane.WorkingDir != "" {
-		lines = append(lines, fmt.Sprintf("Dir:         %s", pane.WorkingDir))
-	}
 
 	pp.content = strings.Join(lines, "\n")
 }
 
 // SetCaptureContent sets raw capture-pane output.
 func (pp *PreviewPanel) SetCaptureContent(content string) {
+	pp.title = "Preview"
 	pp.content = content
 }
 
@@ -195,4 +210,84 @@ func formatTime(t interface{ Format(string) string }) string {
 		return "?"
 	}
 	return t.Format("2006-01-02 15:04")
+}
+
+// ---------------------------------------------------------------------------
+// SSH / remote connection detection
+// ---------------------------------------------------------------------------
+
+var remoteCommands = map[string]bool{
+	"ssh": true, "mosh": true, "mosh-client": true,
+	"ftp": true, "sftp": true,
+}
+
+type sshInfo struct {
+	User string
+	Host string
+	Port string
+}
+
+func (s *sshInfo) Display() string {
+	base := s.Host
+	if s.User != "" {
+		base = s.User + "@" + s.Host
+	}
+	if s.Port != "" {
+		base += ":" + s.Port
+	}
+	return base
+}
+
+// detectRemoteConnection returns (info, true) if command is a known remote
+// process AND pane_title can be parsed to extract connection details.
+// Returns (nil, false) if command is not remote or title is unrecognisable.
+func detectRemoteConnection(command, title string) (*sshInfo, bool) {
+	if !remoteCommands[strings.ToLower(strings.TrimSpace(command))] {
+		return nil, false
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return nil, false
+	}
+	return parseSSHTitle(title)
+}
+
+// parseSSHTitle attempts to extract user@host[:port] from a terminal title.
+// Common formats set by shells on the remote end:
+//
+//	"user@host: ~/path"   (bash/zsh with PROMPT_COMMAND)
+//	"user@host"           (minimal)
+func parseSSHTitle(title string) (*sshInfo, bool) {
+	// Strip trailing ": <path>" suffix.
+	if idx := strings.Index(title, ": "); idx != -1 {
+		title = title[:idx]
+	}
+
+	// Require an "@" to confirm user@host pattern.
+	atIdx := strings.Index(title, "@")
+	if atIdx < 1 {
+		return nil, false
+	}
+
+	user := title[:atIdx]
+	hostPart := title[atIdx+1:]
+	if hostPart == "" {
+		return nil, false
+	}
+
+	info := &sshInfo{User: user}
+
+	// Parse optional port: "host:port" — use LastIndex to handle hostnames with colons
+	// (IPv6 addresses are not handled; this is best-effort).
+	if colonIdx := strings.LastIndex(hostPart, ":"); colonIdx != -1 {
+		info.Host = hostPart[:colonIdx]
+		info.Port = hostPart[colonIdx+1:]
+	} else {
+		info.Host = hostPart
+	}
+
+	if info.Host == "" {
+		return nil, false
+	}
+	return info, true
 }

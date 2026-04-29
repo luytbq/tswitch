@@ -70,7 +70,7 @@ func (c *Client) IsInTmux() bool {
 
 func (c *Client) ListSessions() ([]Session, error) {
 	output, err := c.exec.Run("list-sessions", "-F",
-		"#{session_name}|#{session_windows}|#{session_attached}|#{session_created}|#{session_last_attached}|#{session_width}|#{session_height}")
+		"#{session_name}|#{session_windows}|#{session_attached}|#{session_created}|#{session_last_attached}|#{session_width}|#{session_height}|#{pane_current_path}|#{pane_current_command}|#{pane_title}")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sessions: %w", err)
 	}
@@ -92,7 +92,7 @@ func (c *Client) ListSessions() ([]Session, error) {
 
 func (c *Client) ListWindows(sessionName string) ([]Window, error) {
 	output, err := c.exec.Run("list-windows", "-t", sessionName, "-F",
-		"#{window_index}|#{window_name}|#{window_panes}|#{window_active}|#{window_layout}|#{window_path}")
+		"#{window_index}|#{window_name}|#{window_panes}|#{window_active}|#{window_layout}|#{pane_current_path}|#{pane_current_command}|#{pane_title}")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list windows in session %s: %w", sessionName, err)
 	}
@@ -131,7 +131,7 @@ func (c *Client) ListAllWindowNames() (map[string][]string, error) {
 func (c *Client) ListPanes(sessionName string, windowIndex int) ([]Pane, error) {
 	target := fmt.Sprintf("%s:%d", sessionName, windowIndex)
 	output, err := c.exec.Run("list-panes", "-t", target, "-F",
-		"#{pane_index}|#{pane_active}|#{pane_width}|#{pane_height}|#{pane_current_command}|#{pane_current_path}")
+		"#{pane_index}|#{pane_active}|#{pane_width}|#{pane_height}|#{pane_current_command}|#{pane_current_path}|#{pane_title}")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list panes: %w", err)
 	}
@@ -298,7 +298,7 @@ func splitLines(output string) []string {
 }
 
 func parseSessionLine(line string) (Session, error) {
-	parts := strings.Split(line, "|")
+	parts := strings.SplitN(line, "|", 10)
 	if len(parts) < 7 {
 		return Session{}, fmt.Errorf("invalid session line: need 7 fields, got %d", len(parts))
 	}
@@ -312,7 +312,7 @@ func parseSessionLine(line string) (Session, error) {
 	fmt.Sscanf(parts[5], "%d", &width)  // non-critical, zero is acceptable
 	fmt.Sscanf(parts[6], "%d", &height) // non-critical, zero is acceptable
 
-	return Session{
+	s := Session{
 		Name:        parts[0],
 		WindowCount: windowCount,
 		Attached:    parts[2] == "1",
@@ -320,11 +320,17 @@ func parseSessionLine(line string) (Session, error) {
 		LastActive:  parseUnixTime(parts[4]),
 		Width:       width,
 		Height:      height,
-	}, nil
+	}
+	if len(parts) >= 10 {
+		s.ActivePaneDir   = parts[7]
+		s.ActivePaneCmd   = parts[8]
+		s.ActivePaneTitle = parts[9]
+	}
+	return s, nil
 }
 
 func parseWindowLine(line string) (Window, error) {
-	parts := strings.Split(line, "|")
+	parts := strings.SplitN(line, "|", 8)
 	if len(parts) < 6 {
 		return Window{}, fmt.Errorf("invalid window line: need 6 fields, got %d", len(parts))
 	}
@@ -335,18 +341,23 @@ func parseWindowLine(line string) (Window, error) {
 	}
 	fmt.Sscanf(parts[2], "%d", &paneCount) // zero is acceptable fallback
 
-	return Window{
+	w := Window{
 		Index:      index,
 		Name:       parts[1],
 		PaneCount:  paneCount,
 		Active:     parts[3] == "1",
 		Layout:     parts[4],
 		WorkingDir: parts[5],
-	}, nil
+	}
+	if len(parts) >= 8 {
+		w.ActivePaneCmd   = parts[6]
+		w.ActivePaneTitle = parts[7]
+	}
+	return w, nil
 }
 
 func parsePaneLine(line string) (Pane, error) {
-	parts := strings.Split(line, "|")
+	parts := strings.SplitN(line, "|", 7)
 	if len(parts) < 6 {
 		return Pane{}, fmt.Errorf("invalid pane line: need 6 fields, got %d", len(parts))
 	}
@@ -358,14 +369,18 @@ func parsePaneLine(line string) (Pane, error) {
 	fmt.Sscanf(parts[2], "%d", &width)  // zero is acceptable fallback
 	fmt.Sscanf(parts[3], "%d", &height) // zero is acceptable fallback
 
-	return Pane{
+	p := Pane{
 		Index:      index,
 		Active:     parts[1] == "1",
 		Width:      width,
 		Height:     height,
 		Command:    parts[4],
 		WorkingDir: parts[5],
-	}, nil
+	}
+	if len(parts) >= 7 {
+		p.Title = parts[6]
+	}
+	return p, nil
 }
 
 func parseUnixTime(s string) time.Time {
