@@ -2,6 +2,9 @@ package tui
 
 import (
 	"fmt"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -70,16 +73,14 @@ func (pp *PreviewPanel) SetSessionMetadata(session tmux.Session) {
 	if session.ActivePaneCmd != "" || session.ActivePaneDir != "" {
 		lines = append(lines, "")
 		lines = append(lines, pp.styles.CardSubtle.Render("Active pane:"))
-		if ssh, ok := detectRemoteConnection(session.ActivePaneCmd, session.ActivePaneTitle); ok {
+		if session.ActivePaneDir != "" {
+			lines = append(lines, fmt.Sprintf("  Dir:       %s", session.ActivePaneDir))
+		}
+		if session.ActivePaneCmd != "" {
 			lines = append(lines, fmt.Sprintf("  Command:   %s", session.ActivePaneCmd))
+		}
+		if ssh, ok := detectRemoteConnection(session.ActivePaneCmd, session.ActivePaneTitle, session.ActivePanePID); ok {
 			lines = append(lines, fmt.Sprintf("  Remote:    %s", ssh.Display()))
-		} else {
-			if session.ActivePaneDir != "" {
-				lines = append(lines, fmt.Sprintf("  Dir:       %s", session.ActivePaneDir))
-			}
-			if session.ActivePaneCmd != "" {
-				lines = append(lines, fmt.Sprintf("  Command:   %s", session.ActivePaneCmd))
-			}
 		}
 	}
 
@@ -97,18 +98,14 @@ func (pp *PreviewPanel) SetWindowMetadata(window tmux.Window) {
 	lines = append(lines, fmt.Sprintf("Panes:       %d", window.PaneCount))
 	lines = append(lines, fmt.Sprintf("Layout:      %s", window.Layout))
 
-	if window.ActivePaneCmd != "" {
-		if ssh, ok := detectRemoteConnection(window.ActivePaneCmd, window.ActivePaneTitle); ok {
-			lines = append(lines, fmt.Sprintf("Command:     %s", window.ActivePaneCmd))
-			lines = append(lines, fmt.Sprintf("Remote:      %s", ssh.Display()))
-		} else {
-			if window.WorkingDir != "" {
-				lines = append(lines, fmt.Sprintf("Dir:         %s", window.WorkingDir))
-			}
-			lines = append(lines, fmt.Sprintf("Command:     %s", window.ActivePaneCmd))
-		}
-	} else if window.WorkingDir != "" {
+	if window.WorkingDir != "" {
 		lines = append(lines, fmt.Sprintf("Dir:         %s", window.WorkingDir))
+	}
+	if window.ActivePaneCmd != "" {
+		lines = append(lines, fmt.Sprintf("Command:     %s", window.ActivePaneCmd))
+		if ssh, ok := detectRemoteConnection(window.ActivePaneCmd, window.ActivePaneTitle, window.ActivePanePID); ok {
+			lines = append(lines, fmt.Sprintf("Remote:      %s", ssh.Display()))
+		}
 	}
 
 	pp.content = strings.Join(lines, "\n")
@@ -122,14 +119,12 @@ func (pp *PreviewPanel) SetPaneMetadata(pane tmux.Pane) {
 	lines = append(lines, pp.styles.CardTitle.Render(fmt.Sprintf("Pane %d", pane.Index)))
 	lines = append(lines, "")
 
-	if ssh, ok := detectRemoteConnection(pane.Command, pane.Title); ok {
-		lines = append(lines, fmt.Sprintf("Command:     %s", pane.Command))
+	if pane.WorkingDir != "" {
+		lines = append(lines, fmt.Sprintf("Dir:         %s", pane.WorkingDir))
+	}
+	lines = append(lines, fmt.Sprintf("Command:     %s", pane.Command))
+	if ssh, ok := detectRemoteConnection(pane.Command, pane.Title, pane.PID); ok {
 		lines = append(lines, fmt.Sprintf("Remote:      %s", ssh.Display()))
-	} else {
-		if pane.WorkingDir != "" {
-			lines = append(lines, fmt.Sprintf("Dir:         %s", pane.WorkingDir))
-		}
-		lines = append(lines, fmt.Sprintf("Command:     %s", pane.Command))
 	}
 	lines = append(lines, fmt.Sprintf("Size:        %dx%d", pane.Width, pane.Height))
 
@@ -221,6 +216,14 @@ var remoteCommands = map[string]bool{
 	"ftp": true, "sftp": true,
 }
 
+// sshFlagsWithValue lists ssh flags that consume the next token as their value.
+var sshFlagsWithValue = map[string]bool{
+	"-b": true, "-c": true, "-D": true, "-e": true, "-F": true,
+	"-i": true, "-I": true, "-J": true, "-l": true, "-L": true,
+	"-m": true, "-o": true, "-O": true, "-p": true, "-Q": true,
+	"-R": true, "-S": true, "-w": true, "-W": true,
+}
+
 type sshInfo struct {
 	User string
 	Host string
@@ -239,17 +242,92 @@ func (s *sshInfo) Display() string {
 }
 
 // detectRemoteConnection returns (info, true) if command is a known remote
-// process AND pane_title can be parsed to extract connection details.
-// Returns (nil, false) if command is not remote or title is unrecognisable.
-func detectRemoteConnection(command, title string) (*sshInfo, bool) {
+// process. It tries to read process args via ps first (reliable), then falls
+// back to parsing pane_title (best-effort, depends on remote shell config).
+func detectRemoteConnection(command, title string, pid int) (*sshInfo, bool) {
 	if !remoteCommands[strings.ToLower(strings.TrimSpace(command))] {
 		return nil, false
 	}
-	title = strings.TrimSpace(title)
-	if title == "" {
+	// Primary: read full command line from ps.
+	if pid > 0 {
+		if args := readProcessArgs(pid); args != "" {
+			if info, ok := parseSSHArgs(args); ok {
+				return info, true
+			}
+		}
+	}
+	// Fallback: parse pane_title set by remote shell.
+	if t := strings.TrimSpace(title); t != "" {
+		return parseSSHTitle(t)
+	}
+	return nil, false
+}
+
+// readProcessArgs returns the full command line of a process via ps.
+func readProcessArgs(pid int) string {
+	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "args=").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// parseSSHArgs parses an ssh command line and extracts user, host, port.
+// Handles: ssh [opts] [user@]host [command]
+// Handles combined flag syntax like -p22 as well as separate -p 22.
+func parseSSHArgs(args string) (*sshInfo, bool) {
+	tokens := strings.Fields(args)
+	if len(tokens) == 0 {
 		return nil, false
 	}
-	return parseSSHTitle(title)
+	// Accept both "ssh ..." and full paths like "/usr/bin/ssh ...".
+	base := strings.ToLower(filepath.Base(tokens[0]))
+	if base != "ssh" && base != "mosh" && base != "sftp" && base != "ftp" {
+		return nil, false
+	}
+
+	info := &sshInfo{}
+	i := 1
+	for i < len(tokens) {
+		t := tokens[i]
+		if t == "--" {
+			i++
+			break
+		}
+		// Combined -p22 form.
+		if strings.HasPrefix(t, "-p") && len(t) > 2 {
+			info.Port = t[2:]
+			i++
+			continue
+		}
+		if sshFlagsWithValue[t] && i+1 < len(tokens) {
+			if t == "-p" {
+				info.Port = tokens[i+1]
+			} else if t == "-l" {
+				info.User = tokens[i+1]
+			}
+			i += 2
+			continue
+		}
+		if strings.HasPrefix(t, "-") {
+			i++
+			continue
+		}
+		// First non-flag argument is [user@]host.
+		if at := strings.Index(t, "@"); at > 0 {
+			if info.User == "" {
+				info.User = t[:at]
+			}
+			info.Host = t[at+1:]
+		} else {
+			info.Host = t
+		}
+		break
+	}
+	if info.Host == "" {
+		return nil, false
+	}
+	return info, true
 }
 
 // parseSSHTitle attempts to extract user@host[:port] from a terminal title.
@@ -258,34 +336,25 @@ func detectRemoteConnection(command, title string) (*sshInfo, bool) {
 //	"user@host: ~/path"   (bash/zsh with PROMPT_COMMAND)
 //	"user@host"           (minimal)
 func parseSSHTitle(title string) (*sshInfo, bool) {
-	// Strip trailing ": <path>" suffix.
 	if idx := strings.Index(title, ": "); idx != -1 {
 		title = title[:idx]
 	}
-
-	// Require an "@" to confirm user@host pattern.
 	atIdx := strings.Index(title, "@")
 	if atIdx < 1 {
 		return nil, false
 	}
-
 	user := title[:atIdx]
 	hostPart := title[atIdx+1:]
 	if hostPart == "" {
 		return nil, false
 	}
-
 	info := &sshInfo{User: user}
-
-	// Parse optional port: "host:port" — use LastIndex to handle hostnames with colons
-	// (IPv6 addresses are not handled; this is best-effort).
 	if colonIdx := strings.LastIndex(hostPart, ":"); colonIdx != -1 {
 		info.Host = hostPart[:colonIdx]
 		info.Port = hostPart[colonIdx+1:]
 	} else {
 		info.Host = hostPart
 	}
-
 	if info.Host == "" {
 		return nil, false
 	}

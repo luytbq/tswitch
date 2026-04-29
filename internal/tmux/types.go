@@ -52,6 +52,7 @@ type Session struct {
 	ActivePaneDir   string
 	ActivePaneCmd   string
 	ActivePaneTitle string
+	ActivePanePID   int
 }
 
 // Window represents a TMUX window.
@@ -65,6 +66,7 @@ type Window struct {
 	// Active pane state (populated from list-windows).
 	ActivePaneCmd   string
 	ActivePaneTitle string
+	ActivePanePID   int
 }
 
 // Pane represents a TMUX pane.
@@ -76,4 +78,5 @@ type Pane struct {
 	Command    string
 	WorkingDir string
 	Title      string // pane_title — used for SSH/FTP connection detection
+	PID        int    // pane_pid — used to read SSH process args via ps
 }
