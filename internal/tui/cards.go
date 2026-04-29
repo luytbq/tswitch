@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/luytbq/tswitch/internal/tmux"
 )
@@ -26,9 +28,6 @@ func (c SessionCard) Indicator() string {
 	return ""
 }
 
-// Deprecated: kept for backward compat with mark map lookup that uses Title().
-func (c SessionCard) GetName() string { return c.Title() }
-
 // WindowCard wraps a tmux.Window for grid display.
 type WindowCard struct {
 	window tmux.Window
@@ -41,9 +40,8 @@ func (c WindowCard) Title() string {
 func (c WindowCard) Subtitle() string {
 	info := fmt.Sprintf("%d pane(s)", c.window.PaneCount)
 	if c.window.WorkingDir != "" {
-		// Show just the last path component to save space.
 		dir := c.window.WorkingDir
-		if idx := lastIndexByte(dir, '/'); idx >= 0 && idx < len(dir)-1 {
+		if idx := strings.LastIndexByte(dir, '/'); idx >= 0 && idx < len(dir)-1 {
 			dir = dir[idx+1:]
 		}
 		info += " · " + dir
@@ -58,9 +56,6 @@ func (c WindowCard) Indicator() string {
 	return ""
 }
 
-// Deprecated: kept for backward compat with mark map lookup that uses Title().
-func (c WindowCard) GetName() string { return c.Title() }
-
 // PaneCard wraps a tmux.Pane for grid display.
 type PaneCard struct {
 	pane tmux.Pane
@@ -72,7 +67,7 @@ func (c PaneCard) Title() string {
 
 func (c PaneCard) Subtitle() string {
 	dir := c.pane.WorkingDir
-	if idx := lastIndexByte(dir, '/'); idx >= 0 && idx < len(dir)-1 {
+	if idx := strings.LastIndexByte(dir, '/'); idx >= 0 && idx < len(dir)-1 {
 		dir = dir[idx+1:]
 	}
 	return c.pane.Command + " · " + dir
@@ -85,12 +80,20 @@ func (c PaneCard) Indicator() string {
 	return ""
 }
 
-// lastIndexByte returns the index of the last instance of c in s, or -1.
-func lastIndexByte(s string, c byte) int {
-	for i := len(s) - 1; i >= 0; i-- {
-		if s[i] == c {
-			return i
-		}
+// formatTimeSince returns a human-readable relative time string.
+func formatTimeSince(t time.Time) string {
+	if t.IsZero() {
+		return "?"
 	}
-	return -1
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	}
 }

@@ -186,26 +186,20 @@ func (m *Model) renderStatusBar() string {
 // When multiple marks target the same item, keys are concatenated (e.g. "a,b").
 func (m *Model) buildMarkMap(forSessions bool) map[string]string {
 	mm := make(map[string]string)
-	if forSessions {
-		for key, mark := range m.config.Marks {
-			if existing, ok := mm[mark.SessionName]; ok {
-				mm[mark.SessionName] = existing + "," + key
-			} else {
-				mm[mark.SessionName] = key
-			}
-		}
-	} else {
-		for key, mark := range m.config.Marks {
-			// Only show marks that belong to the currently viewed session.
+	for key, mark := range m.config.Marks {
+		var displayKey string
+		if forSessions {
+			displayKey = mark.SessionName
+		} else {
 			if mark.SessionName != m.currentSess {
 				continue
 			}
-			displayName := fmt.Sprintf("%d: %s", mark.WindowIndex, m.windowName(mark.WindowIndex))
-			if existing, ok := mm[displayName]; ok {
-				mm[displayName] = existing + "," + key
-			} else {
-				mm[displayName] = key
-			}
+			displayKey = fmt.Sprintf("%d: %s", mark.WindowIndex, m.windowName(mark.WindowIndex))
+		}
+		if existing, ok := mm[displayKey]; ok {
+			mm[displayKey] = existing + "," + key
+		} else {
+			mm[displayKey] = key
 		}
 	}
 	return mm

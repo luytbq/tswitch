@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -243,7 +242,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleConfirm()
 
 	case keys.ActionDirectSwitch:
-		return m.handleDirectSwitch()
+		return m.handleQuickSwap()
 
 	case keys.ActionQuickSwap:
 		return m.handleQuickSwap()
@@ -275,11 +274,7 @@ func (m *Model) loadSessions() error {
 		m.windowsBySession = wbs
 	}
 
-	items := make([]GridItem, len(sessions))
-	for i, s := range sessions {
-		items[i] = SessionCard{s}
-	}
-	m.sessionGrid.SetItems(items)
+	m.sessionGrid.SetItems(toGridItems(sessions, func(s tmux.Session) GridItem { return SessionCard{s} }))
 	m.sessionGrid.FocusFirstWhere(func(item GridItem) bool {
 		sc, ok := item.(SessionCard)
 		return ok && sc.session.Attached
@@ -296,11 +291,7 @@ func (m *Model) loadWindows(sessionName string) error {
 	m.windows = windows
 	m.currentSess = sessionName
 
-	items := make([]GridItem, len(windows))
-	for i, w := range windows {
-		items[i] = WindowCard{w}
-	}
-	m.windowGrid.SetItems(items)
+	m.windowGrid.SetItems(toGridItems(windows, func(w tmux.Window) GridItem { return WindowCard{w} }))
 	return nil
 }
 
@@ -312,12 +303,17 @@ func (m *Model) loadPanes(sessionName string, windowIndex int) error {
 	m.panes = panes
 	m.currentWin = windowIndex
 
-	items := make([]GridItem, len(panes))
-	for i, p := range panes {
-		items[i] = PaneCard{p}
-	}
-	m.paneGrid.SetItems(items)
+	m.paneGrid.SetItems(toGridItems(panes, func(p tmux.Pane) GridItem { return PaneCard{p} }))
 	return nil
+}
+
+// toGridItems wraps a typed slice into []GridItem using the provided wrapper.
+func toGridItems[T any](items []T, wrap func(T) GridItem) []GridItem {
+	out := make([]GridItem, len(items))
+	for i, item := range items {
+		out[i] = wrap(item)
+	}
+	return out
 }
 
 // applyFilter re-filters the current mode's items from the full list and
@@ -326,25 +322,13 @@ func (m *Model) applyFilter() {
 	switch m.currentMode {
 	case ModeSessionGrid:
 		filtered := FilterSessions(m.sessions, m.filterQuery, m.windowsBySession)
-		items := make([]GridItem, len(filtered))
-		for i, s := range filtered {
-			items[i] = SessionCard{s}
-		}
-		m.sessionGrid.SetItems(items)
+		m.sessionGrid.SetItems(toGridItems(filtered, func(s tmux.Session) GridItem { return SessionCard{s} }))
 	case ModeWindowGrid:
 		filtered := FilterWindows(m.windows, m.filterQuery)
-		items := make([]GridItem, len(filtered))
-		for i, w := range filtered {
-			items[i] = WindowCard{w}
-		}
-		m.windowGrid.SetItems(items)
+		m.windowGrid.SetItems(toGridItems(filtered, func(w tmux.Window) GridItem { return WindowCard{w} }))
 	case ModePaneGrid:
 		filtered := FilterPanes(m.panes, m.filterQuery)
-		items := make([]GridItem, len(filtered))
-		for i, p := range filtered {
-			items[i] = PaneCard{p}
-		}
-		m.paneGrid.SetItems(items)
+		m.paneGrid.SetItems(toGridItems(filtered, func(p tmux.Pane) GridItem { return PaneCard{p} }))
 	}
 }
 
@@ -405,6 +389,22 @@ func (m *Model) applySavedWindowOrder(sessionName string, windows []tmux.Window)
 		}
 	}
 	return result
+}
+
+// refreshSessions reloads session data, re-applies the current filter, and
+// syncs the preview. Call after any operation that changes session state.
+func (m *Model) refreshSessions() (tea.Model, tea.Cmd) {
+	_ = m.loadSessions()
+	m.applyFilter()
+	return m, m.syncPreview()
+}
+
+// refreshWindows reloads window data for the current session, re-applies the
+// current filter, and syncs the preview.
+func (m *Model) refreshWindows() (tea.Model, tea.Cmd) {
+	_ = m.loadWindows(m.currentSess)
+	m.applyFilter()
+	return m, m.syncPreview()
 }
 
 // resetFilter clears filter state. The grid already contains all items
@@ -520,20 +520,3 @@ func (m *Model) activeGrid() *Grid {
 	}
 }
 
-// formatTimeSince returns a human-readable relative time string.
-func formatTimeSince(t time.Time) string {
-	if t.IsZero() {
-		return "?"
-	}
-	d := time.Since(t)
-	switch {
-	case d < time.Minute:
-		return "now"
-	case d < time.Hour:
-		return fmt.Sprintf("%dm", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh", int(d.Hours()))
-	default:
-		return fmt.Sprintf("%dd", int(d.Hours()/24))
-	}
-}

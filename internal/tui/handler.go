@@ -145,13 +145,13 @@ func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
 		}
 		if err := m.tmux.NewSession(name); err != nil {
 			m.setStatusError(err.Error())
-		} else {
-			m.setStatus("Created: " + name)
-			_ = m.loadSessions()
-			m.applyFilter()
-			m.sessionGrid.FocusFirstWhere(func(item GridItem) bool { return item.Title() == name })
-			return m, m.syncPreview()
+			return m, nil
 		}
+		m.setStatus("Created: " + name)
+		_ = m.loadSessions()
+		m.applyFilter()
+		m.sessionGrid.FocusFirstWhere(func(item GridItem) bool { return item.Title() == name })
+		return m, m.syncPreview()
 
 	case dialogRenameSession:
 		card, ok := m.sessionGrid.GetFocused().(SessionCard)
@@ -165,12 +165,10 @@ func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
 		}
 		if err := m.tmux.RenameSession(card.session.Name, name); err != nil {
 			m.setStatusError(err.Error())
-		} else {
-			m.setStatus("Renamed to: " + name)
-			_ = m.loadSessions()
-			m.applyFilter()
-			return m, m.syncPreview()
+			return m, nil
 		}
+		m.setStatus("Renamed to: " + name)
+		return m.refreshSessions()
 
 	case dialogKillSession:
 		if d.SelectedIdx != 0 {
@@ -183,12 +181,10 @@ func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
 		name := card.session.Name
 		if err := m.tmux.KillSession(name); err != nil {
 			m.setStatusError(err.Error())
-		} else {
-			m.setStatus("Killed: " + name)
-			_ = m.loadSessions()
-			m.applyFilter()
-			return m, m.syncPreview()
+			return m, nil
 		}
+		m.setStatus("Killed: " + name)
+		return m.refreshSessions()
 
 	case dialogNewWindow:
 		name := strings.TrimSpace(d.Input)
@@ -198,13 +194,13 @@ func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
 		}
 		if err := m.tmux.NewWindow(m.currentSess, name); err != nil {
 			m.setStatusError(err.Error())
-		} else {
-			m.setStatus("Created: " + name)
-			_ = m.loadWindows(m.currentSess)
-			m.applyFilter()
-			m.windowGrid.FocusFirstWhere(func(item GridItem) bool { return item.Title() == name })
-			return m, m.syncPreview()
+			return m, nil
 		}
+		m.setStatus("Created: " + name)
+		_ = m.loadWindows(m.currentSess)
+		m.applyFilter()
+		m.windowGrid.FocusFirstWhere(func(item GridItem) bool { return item.Title() == name })
+		return m, m.syncPreview()
 
 	case dialogRenameWindow:
 		card, ok := m.windowGrid.GetFocused().(WindowCard)
@@ -218,12 +214,10 @@ func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
 		}
 		if err := m.tmux.RenameWindow(m.currentSess, card.window.Index, name); err != nil {
 			m.setStatusError(err.Error())
-		} else {
-			m.setStatus("Renamed to: " + name)
-			_ = m.loadWindows(m.currentSess)
-			m.applyFilter()
-			return m, m.syncPreview()
+			return m, nil
 		}
+		m.setStatus("Renamed to: " + name)
+		return m.refreshWindows()
 
 	case dialogKillWindow:
 		if d.SelectedIdx != 0 {
@@ -233,15 +227,13 @@ func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
 		if !ok {
 			return m, nil
 		}
-		winName := card.window.Name
+		name := card.window.Name
 		if err := m.tmux.KillWindow(m.currentSess, card.window.Index); err != nil {
 			m.setStatusError(err.Error())
-		} else {
-			m.setStatus("Killed: " + winName)
-			_ = m.loadWindows(m.currentSess)
-			m.applyFilter()
-			return m, m.syncPreview()
+			return m, nil
 		}
+		m.setStatus("Killed: " + name)
+		return m.refreshWindows()
 	}
 	return m, nil
 }
@@ -386,15 +378,6 @@ func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 		return m.handleQuickSwap()
 	}
 	return m, nil
-}
-
-// handleDirectSwitch switches to the active pane of the focused item
-// immediately, regardless of the current view level.
-// - Session view: switches to the session (tmux picks active window/pane).
-// - Window view: switches to the window (tmux picks active pane).
-// - Pane view: switches to the exact pane.
-func (m *Model) handleDirectSwitch() (tea.Model, tea.Cmd) {
-	return m.handleQuickSwap()
 }
 
 // handleQuickSwap switches to the focused item at any level.

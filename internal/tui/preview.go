@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luytbq/tswitch/internal/tmux"
@@ -198,11 +199,8 @@ func (pp *PreviewPanel) Render() string {
 }
 
 // formatTime formats a time for display, handling zero times.
-func formatTime(t interface{ Format(string) string }) string {
-	type zeroChecker interface {
-		IsZero() bool
-	}
-	if z, ok := t.(zeroChecker); ok && z.IsZero() {
+func formatTime(t time.Time) string {
+	if t.IsZero() {
 		return "?"
 	}
 	return t.Format("2006-01-02 15:04")
