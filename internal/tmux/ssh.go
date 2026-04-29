@@ -60,13 +60,47 @@ func DetectRemoteConnection(command, title string, pid int) (*RemoteInfo, bool) 
 	return nil, false
 }
 
-// readProcessArgs returns the full command line of a process via ps.
+// readProcessArgs finds a remote command (ssh/ftp/…) in the process subtree
+// rooted at pid. pane_pid is the shell PID; the actual remote command runs as
+// a child or grandchild of that shell, so we search up to 4 levels deep.
 func readProcessArgs(pid int) string {
-	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "args=").Output()
-	if err != nil {
+	return findRemoteChildArgs(pid, 4)
+}
+
+// findRemoteChildArgs recursively searches children of pid for a process whose
+// argv[0] is a known remote command, returning its full args string.
+func findRemoteChildArgs(pid, depth int) string {
+	if depth == 0 {
 		return ""
 	}
-	return strings.TrimSpace(string(out))
+	out, err := exec.Command("pgrep", "-P", strconv.Itoa(pid)).Output()
+	if err != nil || len(out) == 0 {
+		return ""
+	}
+	for _, pidStr := range strings.Fields(string(out)) {
+		childPID, err := strconv.Atoi(pidStr)
+		if err != nil {
+			continue
+		}
+		argsOut, err := exec.Command("ps", "-p", pidStr, "-o", "args=").Output()
+		if err != nil {
+			continue
+		}
+		args := strings.TrimSpace(string(argsOut))
+		if args == "" {
+			continue
+		}
+		fields := strings.Fields(args)
+		base := strings.ToLower(filepath.Base(fields[0]))
+		if remoteCommands[base] {
+			return args
+		}
+		// Not a remote command; search its children.
+		if grandchild := findRemoteChildArgs(childPID, depth-1); grandchild != "" {
+			return grandchild
+		}
+	}
+	return ""
 }
 
 // parseSSHArgs parses an ssh command line and extracts user, host, port.
