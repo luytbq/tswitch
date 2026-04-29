@@ -73,11 +73,11 @@ func (pp *PreviewPanel) SetSessionMetadata(session tmux.Session) {
 		if session.ActivePaneDir != "" {
 			lines = append(lines, fmt.Sprintf("  Dir:       %s", session.ActivePaneDir))
 		}
-		if session.ActivePaneCmd != "" {
-			lines = append(lines, fmt.Sprintf("  Command:   %s", session.ActivePaneCmd))
-		}
 		if ssh, ok := tmux.DetectRemoteConnection(session.ActivePaneCmd, session.ActivePaneTitle, session.ActivePanePID); ok {
+			lines = append(lines, fmt.Sprintf("  Command:   %s", ssh.Cmd))
 			lines = append(lines, fmt.Sprintf("  Remote:    %s", ssh.Display()))
+		} else if session.ActivePaneCmd != "" {
+			lines = append(lines, fmt.Sprintf("  Command:   %s", session.ActivePaneCmd))
 		}
 	}
 
@@ -99,9 +99,11 @@ func (pp *PreviewPanel) SetWindowMetadata(window tmux.Window) {
 		lines = append(lines, fmt.Sprintf("Dir:         %s", window.WorkingDir))
 	}
 	if window.ActivePaneCmd != "" {
-		lines = append(lines, fmt.Sprintf("Command:     %s", window.ActivePaneCmd))
 		if ssh, ok := tmux.DetectRemoteConnection(window.ActivePaneCmd, window.ActivePaneTitle, window.ActivePanePID); ok {
+			lines = append(lines, fmt.Sprintf("Command:     %s", ssh.Cmd))
 			lines = append(lines, fmt.Sprintf("Remote:      %s", ssh.Display()))
+		} else {
+			lines = append(lines, fmt.Sprintf("Command:     %s", window.ActivePaneCmd))
 		}
 	}
 
@@ -119,9 +121,11 @@ func (pp *PreviewPanel) SetPaneMetadata(pane tmux.Pane) {
 	if pane.WorkingDir != "" {
 		lines = append(lines, fmt.Sprintf("Dir:         %s", pane.WorkingDir))
 	}
-	lines = append(lines, fmt.Sprintf("Command:     %s", pane.Command))
 	if ssh, ok := tmux.DetectRemoteConnection(pane.Command, pane.Title, pane.PID); ok {
+		lines = append(lines, fmt.Sprintf("Command:     %s", ssh.Cmd))
 		lines = append(lines, fmt.Sprintf("Remote:      %s", ssh.Display()))
+	} else {
+		lines = append(lines, fmt.Sprintf("Command:     %s", pane.Command))
 	}
 	lines = append(lines, fmt.Sprintf("Size:        %dx%d", pane.Width, pane.Height))
 

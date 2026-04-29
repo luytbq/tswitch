@@ -27,6 +27,7 @@ var sshFlagsWithValue = map[string]bool{
 
 // RemoteInfo holds parsed connection details for a remote pane.
 type RemoteInfo struct {
+	Cmd  string // actual remote command name, e.g. "ssh", "mosh", "ftp"
 	User string
 	Host string
 	Port string
@@ -124,7 +125,7 @@ func parseSSHArgs(args string) (*RemoteInfo, bool) {
 		return nil, false
 	}
 
-	info := &RemoteInfo{}
+	info := &RemoteInfo{Cmd: base}
 	i := 1
 	for i < len(tokens) {
 		t := tokens[i]
