@@ -12,6 +12,11 @@ var remoteCommands = map[string]bool{
 	"ftp": true, "sftp": true,
 }
 
+// shellCommands lists processes that may wrap a remote command (e.g. zsh -c ... ssh ...).
+var shellCommands = map[string]bool{
+	"zsh": true, "bash": true, "sh": true, "fish": true, "tcsh": true, "csh": true,
+}
+
 // sshFlagsWithValue lists ssh flags that consume the next token as their value.
 var sshFlagsWithValue = map[string]bool{
 	"-b": true, "-c": true, "-D": true, "-e": true, "-F": true,
@@ -38,21 +43,23 @@ func (r *RemoteInfo) Display() string {
 	return base
 }
 
-// DetectRemoteConnection returns (info, true) if command is a known remote
-// process. It tries to read process args via ps first (reliable), then falls
-// back to parsing pane_title (best-effort, depends on remote shell config).
+// DetectRemoteConnection returns (info, true) if the pane is running a known
+// remote command (ssh, ftp, …) — either directly or wrapped inside a shell
+// (e.g. "zsh -c … ssh user@host"). It searches the process subtree rooted at
+// pid, then falls back to parsing pane_title.
 func DetectRemoteConnection(command, title string, pid int) (*RemoteInfo, bool) {
-	if !remoteCommands[strings.ToLower(strings.TrimSpace(command))] {
-		return nil, false
-	}
-	// Primary: read full command line from ps.
-	if pid > 0 {
+	cmd := strings.ToLower(strings.TrimSpace(command))
+
+	// Search the process subtree when the pane runs a remote command directly
+	// OR when it runs a shell that may be wrapping one (zsh -c ... ssh ...).
+	if pid > 0 && (remoteCommands[cmd] || shellCommands[cmd]) {
 		if args := readProcessArgs(pid); args != "" {
 			if info, ok := parseSSHArgs(args); ok {
 				return info, true
 			}
 		}
 	}
+
 	// Fallback: parse pane_title set by remote shell.
 	if t := strings.TrimSpace(title); t != "" {
 		return parseSSHTitle(t)
