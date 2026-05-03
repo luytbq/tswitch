@@ -8,6 +8,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	PreviewModeCapture  = "capture"
+	PreviewModeMetadata = "metadata"
+)
+
 // Config holds the application configuration.
 type Config struct {
 	Tags         map[string][]string `yaml:"tags"`
@@ -26,9 +31,9 @@ type Mark struct {
 
 // Settings holds user-level preferences.
 type Settings struct {
-	DefaultPreview string `yaml:"default_preview"`
-	Theme          string `yaml:"theme"`
-	SortBy         string `yaml:"sort_by"`
+	PreviewMode string `yaml:"preview_mode"` // last-used preview toggle state; empty = capture
+	Theme       string `yaml:"theme"`
+	SortBy      string `yaml:"sort_by"`
 }
 
 // Default returns a Config with sensible defaults.
@@ -37,9 +42,8 @@ func Default() *Config {
 		Tags:  make(map[string][]string),
 		Marks: make(map[string]Mark),
 		Settings: Settings{
-			DefaultPreview: "capture",
-			Theme:          "default",
-			SortBy:         "activity",
+			Theme:  "default",
+			SortBy: "activity",
 		},
 	}
 }
@@ -204,9 +208,6 @@ func configDir() (string, error) {
 }
 
 func (c *Config) fillDefaults() {
-	if c.Settings.DefaultPreview == "" {
-		c.Settings.DefaultPreview = "capture"
-	}
 	if c.Settings.Theme == "" {
 		c.Settings.Theme = "default"
 	}

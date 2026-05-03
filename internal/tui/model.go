@@ -100,6 +100,9 @@ func NewModelWith(svc tmux.Service, appCfg *config.AppConfig) (*Model, error) {
 	m.windowGrid = NewGrid(gridW, gridH, styles)
 	m.paneGrid = NewGrid(gridW, gridH, styles)
 	m.previewPanel = NewPreviewPanel(previewW, previewH, styles)
+	if m.config.Settings.PreviewMode == config.PreviewModeMetadata {
+		m.previewPanel.mode = PreviewMetadata
+	}
 
 	if err := m.loadSessions(); err != nil {
 		m.setStatusError(err.Error())
@@ -194,6 +197,12 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keys.ActionTogglePreview:
 		m.previewPanel.ToggleMode()
+		if m.previewPanel.IsCapture() {
+			m.config.Settings.PreviewMode = config.PreviewModeCapture
+		} else {
+			m.config.Settings.PreviewMode = config.PreviewModeMetadata
+		}
+		_ = config.SaveState(m.config)
 		return m, m.syncPreview()
 
 	case keys.ActionStartMark:
