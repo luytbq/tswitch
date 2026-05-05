@@ -128,6 +128,21 @@ func (c *Client) ListAllWindowNames() (map[string][]string, error) {
 	return result, nil
 }
 
+func (c *Client) ListAllPaneCounts() (map[string]int, error) {
+	output, err := c.exec.Run("list-panes", "-a", "-F", "#{session_name}")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list all panes: %w", err)
+	}
+
+	result := make(map[string]int)
+	for _, line := range splitLines(output) {
+		if line != "" {
+			result[line]++
+		}
+	}
+	return result, nil
+}
+
 func (c *Client) ListPanes(sessionName string, windowIndex int) ([]Pane, error) {
 	target := fmt.Sprintf("%s:%d", sessionName, windowIndex)
 	output, err := c.exec.Run("list-panes", "-t", target, "-F",

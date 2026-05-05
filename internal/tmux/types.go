@@ -10,7 +10,8 @@ type Service interface {
 	IsInTmux() bool
 	ListSessions() ([]Session, error)
 	ListWindows(sessionName string) ([]Window, error)
-	ListAllWindowNames() (map[string][]string, error) // session -> window names
+	ListAllWindowNames() (map[string][]string, error)  // session -> window names
+	ListAllPaneCounts() (map[string]int, error)        // session -> total pane count
 	ListPanes(sessionName string, windowIndex int) ([]Pane, error)
 	CapturePane(sessionName string, windowIndex int, paneIndex int) (string, error)
 
@@ -43,6 +44,7 @@ type Service interface {
 type Session struct {
 	Name        string
 	WindowCount int
+	PaneCount   int
 	Attached    bool
 	Created     time.Time
 	LastActive  time.Time

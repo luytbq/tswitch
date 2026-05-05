@@ -18,7 +18,7 @@ func (c SessionCard) Title() string {
 }
 
 func (c SessionCard) Subtitle() string {
-	return fmt.Sprintf("%d wins · %s", c.session.WindowCount, formatTimeSince(c.session.LastActive))
+	return fmt.Sprintf("%d wins · %d panes · %s", c.session.WindowCount, c.session.PaneCount, formatTimeSince(c.session.LastActive))
 }
 
 func (c SessionCard) Indicator() string {

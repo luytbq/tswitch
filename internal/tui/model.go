@@ -283,6 +283,13 @@ func (m *Model) loadSessions() error {
 		m.windowsBySession = wbs
 	}
 
+	// Pre-fetch total pane counts per session.
+	if paneCounts, err := m.tmux.ListAllPaneCounts(); err == nil {
+		for i := range sessions {
+			sessions[i].PaneCount = paneCounts[sessions[i].Name]
+		}
+	}
+
 	m.sessionGrid.SetItems(toGridItems(sessions, func(s tmux.Session) GridItem { return SessionCard{s} }))
 	m.sessionGrid.FocusFirstWhere(func(item GridItem) bool {
 		sc, ok := item.(SessionCard)

@@ -144,13 +144,13 @@ func (m *Model) renderStatusBar() string {
 	switch m.currentMode {
 	case ModeSessionGrid:
 		modeLabel = s.StatusMode.Render("SESSIONS")
-		hints = " hjkl:nav  enter:drill  space:switch  /:search  n:new  r:rename  d:kill  p:paste  m:mark  f:browse  ?:help  q:quit"
+		hints = " hjkl/HJKL:nav/reorder  o:open  enter/space:switch  tab:preview  /:search  n:new  r:rename  d:kill  p:paste  m:mark  f:browse  ?:help  q:quit"
 	case ModeWindowGrid:
 		modeLabel = s.StatusMode.Render("WINDOWS")
-		hints = " hjkl:nav  enter:drill  space:switch  /:search  n:new  r:rename  d:kill  x:cut  p:paste  m:mark  esc:back  ?:help  q:quit"
+		hints = " hjkl/HJKL:nav/reorder  o:open  enter/space:switch  tab:preview  /:search  n:new  r:rename  d:kill  x:cut  p:paste  m:mark  esc:back  ?:help  q:quit"
 	case ModePaneGrid:
 		modeLabel = s.StatusMode.Render("PANES")
-		hints = " hjkl:nav  enter:select  space:switch  /:search  x:cut  m:mark  esc:back  ?:help  q:quit"
+		hints = " hjkl/HJKL:nav/reorder  enter/space:switch  tab:preview  /:search  x:cut  p:paste  m:mark  esc:back  ?:help  q:quit"
 	}
 	left := modeLabel + s.StatusHints.Render(hints)
 
