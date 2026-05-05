@@ -40,6 +40,7 @@ type Grid struct {
 	scrollOffset int
 	styles       Styles
 	markMap      map[string]string // item key -> mark key
+	minCardW     int              // user-configured minimum; 0 = use minCardContentW const
 }
 
 // NewGrid creates a new grid component.
@@ -66,6 +67,13 @@ func (g *Grid) SetSize(width, height int) {
 	g.height = height
 	g.recalculate()
 	g.ensureVisible()
+}
+
+// SetMinCardWidth sets a user-configured minimum card content width.
+// Passing 0 reverts to the built-in default (minCardContentW const).
+func (g *Grid) SetMinCardWidth(w int) {
+	g.minCardW = w
+	g.recalculate()
 }
 
 // SetMarks provides a mapping from item titles to mark key labels.
@@ -209,12 +217,16 @@ func (g *Grid) Render() string {
 // ---------------------------------------------------------------------------
 
 func (g *Grid) recalculate() {
-	minSlot := minCardContentW + cardBorderPadding + cardGap
+	minW := minCardContentW
+	if g.minCardW > minW {
+		minW = g.minCardW
+	}
+	minSlot := minW + cardBorderPadding + cardGap
 	g.columns = max(1, g.width/minSlot)
 	slotW := g.width / g.columns
 	g.cardContentW = slotW - cardBorderPadding - cardGap
-	if g.cardContentW < minCardContentW {
-		g.cardContentW = minCardContentW
+	if g.cardContentW < minW {
+		g.cardContentW = minW
 	}
 	g.usedWidth = g.columns * (g.cardContentW + cardBorderPadding + cardGap)
 	if len(g.items) > 0 {

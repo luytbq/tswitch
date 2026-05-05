@@ -12,12 +12,18 @@ type BrowseDir struct {
 	Depth int    `json:"depth"`
 }
 
+// UIConfig holds visual/layout preferences.
+type UIConfig struct {
+	CardMinWidth int `json:"card_min_width"` // minimum card content width; 0 = use built-in default
+}
+
 // AppConfig holds read-only application settings loaded from tswitch-config.json.
 // This is separate from Config (config.yaml) which stores runtime state.
 type AppConfig struct {
-	Keys            map[string]string `json:"keys"`
-	BrowseDirs      []BrowseDir      `json:"browse_dirs"`
-	BrowseExclude   []string         `json:"browse_exclude"`
+	Keys          map[string]string `json:"keys"`
+	BrowseDirs    []BrowseDir       `json:"browse_dirs"`
+	BrowseExclude []string          `json:"browse_exclude"`
+	UI            UIConfig          `json:"ui"`
 }
 
 // DefaultAppConfig returns an AppConfig with no overrides (all defaults).

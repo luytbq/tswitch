@@ -27,7 +27,7 @@
   "browse_dirs": [
     {"path": "~/projects", "depth": 4},
     {"path": "~/.config", "depth": 4},
-    {"path": "/home/luytbq", "depth": 1}
+    {"path": "/home", "depth": 1}
   ],
   "browse_exclude": [
     ".angular",
@@ -39,5 +39,8 @@
     "lib",
     "node_modules",
     "vendor"
-  ]
+  ],
+  "ui": {
+    "card_min_width": 20
+  }
 }

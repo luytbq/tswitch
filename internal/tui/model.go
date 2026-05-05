@@ -99,6 +99,11 @@ func NewModelWith(svc tmux.Service, appCfg *config.AppConfig) (*Model, error) {
 	m.sessionGrid = NewGrid(gridW, gridH, styles)
 	m.windowGrid = NewGrid(gridW, gridH, styles)
 	m.paneGrid = NewGrid(gridW, gridH, styles)
+	if w := appCfg.UI.CardMinWidth; w > 0 {
+		m.sessionGrid.SetMinCardWidth(w)
+		m.windowGrid.SetMinCardWidth(w)
+		m.paneGrid.SetMinCardWidth(w)
+	}
 	m.previewPanel = NewPreviewPanel(previewW, previewH, styles)
 	if m.config.Settings.PreviewMode == config.PreviewModeMetadata {
 		m.previewPanel.mode = PreviewMetadata
@@ -453,9 +458,13 @@ func (m *Model) layoutSizes() (gridW, gridH, previewContentW, previewH int) {
 		previewPct = 50
 	}
 
+	minW := minCardContentW
+	if m.appConfig.UI.CardMinWidth > minW {
+		minW = m.appConfig.UI.CardMinWidth
+	}
 	previewRendered := m.width * previewPct / 100
-	if previewRendered < previewBorder+minCardContentW {
-		previewRendered = previewBorder + minCardContentW
+	if previewRendered < previewBorder+minW {
+		previewRendered = previewBorder + minW
 	}
 	previewContentW = previewRendered - previewBorder
 

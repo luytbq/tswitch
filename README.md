@@ -103,6 +103,9 @@ Example config:
     "quit": "Q",
     "filter": "f"
   },
+  "ui": {
+    "card_min_width": 20
+  },
   "browse_dirs": [
     {"path": "~/projects", "depth": 4},
     {"path": "~/.config", "depth": 3}
@@ -116,6 +119,8 @@ Example config:
 ```
 
 **`keys`** — override default key bindings. Action names: `move_up`, `move_down`, `move_left`, `move_right`, `confirm`, `quick_swap`, `back`, `start_mark`, `new`, `rename`, `kill`, `cut`, `paste`, `tag`, `reorder_up`, `reorder_down`, `reorder_left`, `reorder_right`, `toggle_preview`, `toggle_help`, `filter`, `quit`.
+
+**`ui.card_min_width`** — minimum card content width in characters (default: `16`). Increase this to fit longer session/window names without truncation; for example, `20` is a good value if your names regularly exceed 11–12 characters. Wider cards mean fewer columns on the same terminal width.
 
 **`browse_dirs`** — directories that `tswitch browse` scans for subdirectories to open as new tmux sessions. Each entry is a `{path, depth}` pair; `depth` is how many levels to descend. Requires [`fzf`](https://github.com/junegunn/fzf) to be available in `PATH`.
 
