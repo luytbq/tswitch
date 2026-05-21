@@ -77,7 +77,7 @@ func (c *Client) IsInTmux() bool {
 
 func (c *Client) ListSessions() ([]Session, error) {
 	output, err := c.exec.Run("list-sessions", "-F",
-		"#{session_name}|#{session_windows}|#{session_attached}|#{session_created}|#{session_last_attached}|#{session_width}|#{session_height}|#{pane_current_path}|#{pane_current_command}|#{pane_pid}|#{pane_title}")
+		"#{session_name}|#{session_windows}|#{session_attached}|#{session_created}|#{session_last_attached}|#{session_width}|#{session_height}|#{pane_current_path}|#{pane_current_command}|#{pane_pid}|#{pane_title}|#{session_panes}")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sessions: %w", err)
 	}
@@ -320,7 +320,7 @@ func splitLines(output string) []string {
 }
 
 func parseSessionLine(line string) (Session, error) {
-	parts := strings.SplitN(line, "|", 11)
+	parts := strings.SplitN(line, "|", 12)
 	if len(parts) < 7 {
 		return Session{}, fmt.Errorf("invalid session line: need 7 fields, got %d", len(parts))
 	}
@@ -348,6 +348,9 @@ func parseSessionLine(line string) (Session, error) {
 		s.ActivePaneCmd = parts[8]
 		fmt.Sscanf(parts[9], "%d", &s.ActivePanePID)
 		s.ActivePaneTitle = parts[10]
+	}
+	if len(parts) >= 12 {
+		fmt.Sscanf(parts[11], "%d", &s.PaneCount)
 	}
 	return s, nil
 }
