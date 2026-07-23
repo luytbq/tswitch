@@ -37,6 +37,13 @@ type Client struct {
 	currentSession string // session tswitch is running in (empty if not in tmux)
 }
 
+// sessionTarget formats a session name as a tmux target with an exact-match
+// prefix ("="), preventing tmux's prefix-matching from resolving it to an
+// unrelated session (e.g. "-t l" would otherwise match session "lbqs").
+func sessionTarget(sessionName string) string {
+	return "=" + sessionName
+}
+
 // NewClient creates a Client that shells out to the real tmux binary.
 func NewClient() *Client {
 	c := &Client{
@@ -91,7 +98,7 @@ func (c *Client) ListSessions() ([]Session, error) {
 }
 
 func (c *Client) ListWindows(sessionName string) ([]Window, error) {
-	output, err := c.exec.Run("list-windows", "-t", sessionName, "-F",
+	output, err := c.exec.Run("list-windows", "-t", sessionTarget(sessionName), "-F",
 		"#{window_index}|#{window_name}|#{window_panes}|#{window_active}|#{window_layout}|#{pane_current_path}|#{pane_current_command}|#{pane_pid}|#{pane_title}")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list windows in session %s: %w", sessionName, err)
@@ -144,7 +151,7 @@ func (c *Client) ListAllPaneCounts() (map[string]int, error) {
 }
 
 func (c *Client) ListPanes(sessionName string, windowIndex int) ([]Pane, error) {
-	target := fmt.Sprintf("%s:%d", sessionName, windowIndex)
+	target := fmt.Sprintf("%s:%d", sessionTarget(sessionName), windowIndex)
 	output, err := c.exec.Run("list-panes", "-t", target, "-F",
 		"#{pane_index}|#{pane_active}|#{pane_width}|#{pane_height}|#{pane_current_command}|#{pane_current_path}|#{pane_pid}|#{pane_title}")
 	if err != nil {
@@ -166,9 +173,9 @@ func (c *Client) CapturePane(sessionName string, windowIndex int, paneIndex int)
 	var target string
 	if windowIndex < 0 {
 		// Capture the active window/pane of the session.
-		target = sessionName
+		target = sessionTarget(sessionName)
 	} else {
-		target = fmt.Sprintf("%s:%d.%d", sessionName, windowIndex, paneIndex)
+		target = fmt.Sprintf("%s:%d.%d", sessionTarget(sessionName), windowIndex, paneIndex)
 	}
 	return c.exec.Run("capture-pane", "-t", target, "-p")
 }
@@ -180,7 +187,7 @@ func (c *Client) CapturePane(sessionName string, windowIndex int, paneIndex int)
 // SwitchToSession switches to a session without specifying a window,
 // letting tmux choose the current/last-active window automatically.
 func (c *Client) SwitchToSession(sessionName string) error {
-	_, err := c.exec.Run("switch-client", "-t", sessionName)
+	_, err := c.exec.Run("switch-client", "-t", sessionTarget(sessionName))
 	return err
 }
 
@@ -191,19 +198,19 @@ func (c *Client) SwitchToLast() error {
 }
 
 func (c *Client) SwitchClient(sessionName string, windowIndex int) error {
-	target := fmt.Sprintf("%s:%d", sessionName, windowIndex)
+	target := fmt.Sprintf("%s:%d", sessionTarget(sessionName), windowIndex)
 	_, err := c.exec.Run("switch-client", "-t", target)
 	return err
 }
 
 func (c *Client) SelectPane(sessionName string, windowIndex int, paneIndex int) error {
-	target := fmt.Sprintf("%s:%d.%d", sessionName, windowIndex, paneIndex)
+	target := fmt.Sprintf("%s:%d.%d", sessionTarget(sessionName), windowIndex, paneIndex)
 	_, err := c.exec.Run("switch-client", "-t", target)
 	return err
 }
 
 func (c *Client) AttachSession(sessionName string) error {
-	_, err := c.exec.Run("attach-session", "-t", sessionName)
+	_, err := c.exec.Run("attach-session", "-t", sessionTarget(sessionName))
 	return err
 }
 
@@ -222,12 +229,12 @@ func (c *Client) NewSessionInDir(sessionName string, dir string) error {
 }
 
 func (c *Client) HasSession(sessionName string) bool {
-	_, err := c.exec.Run("has-session", "-t", sessionName)
+	_, err := c.exec.Run("has-session", "-t", sessionTarget(sessionName))
 	return err == nil
 }
 
 func (c *Client) RenameSession(oldName, newName string) error {
-	_, err := c.exec.Run("rename-session", "-t", oldName, newName)
+	_, err := c.exec.Run("rename-session", "-t", sessionTarget(oldName), newName)
 	return err
 }
 
@@ -237,7 +244,7 @@ func (c *Client) KillSession(sessionName string) error {
 	if c.currentSession == sessionName {
 		c.exec.Run("switch-client", "-n") // ignore error — best effort
 	}
-	_, err := c.exec.Run("kill-session", "-t", sessionName)
+	_, err := c.exec.Run("kill-session", "-t", sessionTarget(sessionName))
 	return err
 }
 
@@ -247,12 +254,12 @@ func (c *Client) KillSession(sessionName string) error {
 
 func (c *Client) NewWindow(sessionName string, windowName string) error {
 	home, _ := os.UserHomeDir()
-	_, err := c.exec.Run("new-window", "-t", sessionName, "-n", windowName, "-c", home)
+	_, err := c.exec.Run("new-window", "-t", sessionTarget(sessionName), "-n", windowName, "-c", home)
 	return err
 }
 
 func (c *Client) RenameWindow(sessionName string, windowIndex int, newName string) error {
-	target := fmt.Sprintf("%s:%d", sessionName, windowIndex)
+	target := fmt.Sprintf("%s:%d", sessionTarget(sessionName), windowIndex)
 	_, err := c.exec.Run("rename-window", "-t", target, newName)
 	return err
 }
@@ -263,7 +270,7 @@ func (c *Client) KillWindow(sessionName string, windowIndex int) error {
 	if c.currentSession == sessionName {
 		c.exec.Run("switch-client", "-n") // ignore error — best effort
 	}
-	target := fmt.Sprintf("%s:%d", sessionName, windowIndex)
+	target := fmt.Sprintf("%s:%d", sessionTarget(sessionName), windowIndex)
 	_, err := c.exec.Run("kill-window", "-t", target)
 	return err
 }
@@ -271,16 +278,16 @@ func (c *Client) KillWindow(sessionName string, windowIndex int) error {
 // MoveWindow moves a window from one session to another, appending it to the
 // end of the destination session's window list.
 func (c *Client) MoveWindow(srcSession string, srcIndex int, dstSession string) error {
-	src := fmt.Sprintf("%s:%d", srcSession, srcIndex)
-	dst := fmt.Sprintf("%s:", dstSession) // trailing colon = append to end
+	src := fmt.Sprintf("%s:%d", sessionTarget(srcSession), srcIndex)
+	dst := fmt.Sprintf("%s:", sessionTarget(dstSession)) // trailing colon = append to end
 	_, err := c.exec.Run("move-window", "-s", src, "-t", dst)
 	return err
 }
 
 // SwapWindow swaps two windows within the same session by their indices.
 func (c *Client) SwapWindow(sessionName string, srcIndex, dstIndex int) error {
-	src := fmt.Sprintf("%s:%d", sessionName, srcIndex)
-	dst := fmt.Sprintf("%s:%d", sessionName, dstIndex)
+	src := fmt.Sprintf("%s:%d", sessionTarget(sessionName), srcIndex)
+	dst := fmt.Sprintf("%s:%d", sessionTarget(sessionName), dstIndex)
 	_, err := c.exec.Run("swap-window", "-s", src, "-t", dst)
 	return err
 }
@@ -292,8 +299,8 @@ func (c *Client) SwapWindow(sessionName string, srcIndex, dstIndex int) error {
 // JoinPane moves a pane from one window into another (possibly in a different
 // session), joining the end of the destination window's pane list.
 func (c *Client) JoinPane(srcSession string, srcWindow, srcPane int, dstSession string, dstWindow int) error {
-	src := fmt.Sprintf("%s:%d.%d", srcSession, srcWindow, srcPane)
-	dst := fmt.Sprintf("%s:%d", dstSession, dstWindow)
+	src := fmt.Sprintf("%s:%d.%d", sessionTarget(srcSession), srcWindow, srcPane)
+	dst := fmt.Sprintf("%s:%d", sessionTarget(dstSession), dstWindow)
 	_, err := c.exec.Run("join-pane", "-s", src, "-t", dst)
 	return err
 }
