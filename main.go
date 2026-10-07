@@ -9,10 +9,12 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/luytbq/tswitch/internal/config"
 	"github.com/luytbq/tswitch/internal/keys"
 	"github.com/luytbq/tswitch/internal/tmux"
 	"github.com/luytbq/tswitch/internal/tui"
+	"github.com/muesli/termenv"
 )
 
 // version is populated by -ldflags "-X main.version=..." during `make build`.
@@ -56,6 +58,8 @@ func main() {
 		}
 		return
 	}
+
+	ensureColorInsideTmux()
 
 	model, err := tui.NewModel(appCfg)
 	if err != nil {
@@ -119,4 +123,18 @@ func runBrowse(client *tmux.Client, appCfg *config.AppConfig) error {
 	}
 
 	return tui.SwitchOrCreateSession(client, selected)
+}
+
+// ensureColorInsideTmux upgrades the color profile when running inside tmux.
+// Older tmux versions default to TERM=screen (or TERM=tmux), which termenv
+// maps to the Ascii profile and strips every color, including the focused-card
+// highlight. tmux itself always understands 256 colors and downsamples for the
+// outer terminal, so ANSI256 is safe. NO_COLOR is still honored.
+func ensureColorInsideTmux() {
+	if os.Getenv("TMUX") == "" || os.Getenv("NO_COLOR") != "" {
+		return
+	}
+	if lipgloss.ColorProfile() == termenv.Ascii {
+		lipgloss.SetColorProfile(termenv.ANSI256)
+	}
 }

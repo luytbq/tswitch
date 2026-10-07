@@ -44,8 +44,9 @@ func NewStyles() Styles {
 			BorderForeground(lipgloss.Color("238")).
 			Padding(0, 1),
 
+		// Thick border keeps focus visible when the terminal has no color support.
 		CardFocusedStyle: lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
+			Border(lipgloss.ThickBorder()).
 			BorderForeground(lipgloss.Color("75")),
 
 		CardTitle: lipgloss.NewStyle().
