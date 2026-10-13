@@ -161,6 +161,15 @@ func (g *Grid) UsedWidth() int {
 	return g.usedWidth
 }
 
+// SetFocusIndex moves focus to an absolute position.
+func (g *Grid) SetFocusIndex(i int) {
+	if i < 0 || i >= len(g.items) {
+		return
+	}
+	g.focusIndex = i
+	g.ensureVisible()
+}
+
 // FocusFirstWhere moves focus to the first item satisfying match without
 // scrolling the viewport. Does nothing if no item matches.
 func (g *Grid) FocusFirstWhere(match func(GridItem) bool) {

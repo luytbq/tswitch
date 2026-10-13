@@ -19,6 +19,8 @@
     "reorder_down": "J",
     "reorder_left": "H",
     "reorder_right": "L",
+    "toggle_view": "v",
+    "cycle_sort": "s",
     "toggle_preview": "tab",
     "toggle_help": "?",
     "filter": "/",

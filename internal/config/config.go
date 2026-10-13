@@ -11,6 +11,15 @@ import (
 const (
 	PreviewModeCapture  = "capture"
 	PreviewModeMetadata = "metadata"
+
+	// Session sort modes.
+	SortRecent = "recent" // most recently attached first
+	SortName   = "name"
+	SortManual = "manual" // follow SessionOrder
+
+	// Main view modes.
+	ViewGrid = "grid"
+	ViewList = "list"
 )
 
 // Config holds the application configuration.
@@ -20,6 +29,10 @@ type Config struct {
 	Settings     Settings            `yaml:"settings"`
 	SessionOrder []string            `yaml:"session_order,omitempty"`
 	WindowOrder  map[string][]int    `yaml:"window_order,omitempty"`
+	// Expanded holds the tree-view expansion state: a session name is present
+	// when that session is expanded, and its value lists the expanded window
+	// indices inside it. Absent means collapsed.
+	Expanded map[string][]int `yaml:"expanded,omitempty"`
 }
 
 // Mark represents a bookmarked session/window/pane.
@@ -32,18 +45,28 @@ type Mark struct {
 // Settings holds user-level preferences.
 type Settings struct {
 	PreviewMode string `yaml:"preview_mode"` // last-used preview toggle state; empty = capture
+	ViewMode    string `yaml:"view_mode"`    // grid | list
 	Theme       string `yaml:"theme"`
-	SortBy      string `yaml:"sort_by"`
+	SortBy      string `yaml:"sort_by"` // recent | name | manual
+	// PinCurrentFirst keeps the session the client is attached to at the top
+	// of the list regardless of sort mode. Pointer so an absent key can be
+	// told apart from an explicit false.
+	PinCurrentFirst *bool `yaml:"pin_current_first,omitempty"`
 }
 
 // Default returns a Config with sensible defaults.
 func Default() *Config {
+	// PinCurrentFirst is a pointer so an absent key can be told apart from an
+	// explicit false; every Config needs its own, not a shared one.
+	pinCurrent := true
 	return &Config{
 		Tags:  make(map[string][]string),
 		Marks: make(map[string]Mark),
 		Settings: Settings{
-			Theme:  "default",
-			SortBy: "activity",
+			Theme:           "default",
+			SortBy:          SortRecent,
+			ViewMode:        ViewGrid,
+			PinCurrentFirst: &pinCurrent,
 		},
 	}
 }
@@ -211,7 +234,123 @@ func (c *Config) fillDefaults() {
 	if c.Settings.Theme == "" {
 		c.Settings.Theme = "default"
 	}
-	if c.Settings.SortBy == "" {
-		c.Settings.SortBy = "activity"
+	switch c.Settings.SortBy {
+	case SortRecent, SortName, SortManual:
+	default:
+		// "activity" was the name this mode shipped under before it was wired up.
+		c.Settings.SortBy = SortRecent
+	}
+	if c.Settings.ViewMode != ViewList {
+		c.Settings.ViewMode = ViewGrid
+	}
+	if c.Settings.PinCurrentFirst == nil {
+		on := true
+		c.Settings.PinCurrentFirst = &on
+	}
+}
+
+// PinCurrentFirst reports whether the attached session is pinned to the top.
+func (c *Config) PinCurrentFirst() bool {
+	return c.Settings.PinCurrentFirst == nil || *c.Settings.PinCurrentFirst
+}
+
+// ---------------------------------------------------------------------------
+// Tree expansion helpers
+// ---------------------------------------------------------------------------
+
+// IsSessionExpanded reports whether the session's node is open.
+func (c *Config) IsSessionExpanded(session string) bool {
+	_, ok := c.Expanded[session]
+	return ok
+}
+
+// IsWindowExpanded reports whether the window's node is open. A window can
+// only be open while its session is open.
+func (c *Config) IsWindowExpanded(session string, windowIndex int) bool {
+	for _, idx := range c.Expanded[session] {
+		if idx == windowIndex {
+			return true
+		}
+	}
+	return false
+}
+
+// SetSessionExpanded opens or closes a session. Closing it also drops the
+// expanded windows inside, since they cannot be seen while it is closed.
+func (c *Config) SetSessionExpanded(session string, expanded bool) {
+	if !expanded {
+		delete(c.Expanded, session)
+		return
+	}
+	if c.Expanded == nil {
+		c.Expanded = make(map[string][]int)
+	}
+	if _, ok := c.Expanded[session]; !ok {
+		c.Expanded[session] = []int{}
+	}
+}
+
+// SetWindowExpanded opens or closes a window inside a session.
+func (c *Config) SetWindowExpanded(session string, windowIndex int, expanded bool) {
+	if !expanded {
+		rest := c.Expanded[session][:0]
+		for _, idx := range c.Expanded[session] {
+			if idx != windowIndex {
+				rest = append(rest, idx)
+			}
+		}
+		if _, ok := c.Expanded[session]; ok {
+			c.Expanded[session] = rest
+		}
+		return
+	}
+	c.SetSessionExpanded(session, true)
+	if !c.IsWindowExpanded(session, windowIndex) {
+		c.Expanded[session] = append(c.Expanded[session], windowIndex)
+	}
+}
+
+// CollapseAll closes every node.
+func (c *Config) CollapseAll() { c.Expanded = nil }
+
+// RenameSessionState moves the state keyed by session name onto a new name.
+func (c *Config) RenameSessionState(oldName, newName string) {
+	if windows, ok := c.Expanded[oldName]; ok {
+		delete(c.Expanded, oldName)
+		if c.Expanded == nil {
+			c.Expanded = make(map[string][]int)
+		}
+		c.Expanded[newName] = windows
+	}
+	for i, name := range c.SessionOrder {
+		if name == oldName {
+			c.SessionOrder[i] = newName
+		}
+	}
+	if order, ok := c.WindowOrder[oldName]; ok {
+		delete(c.WindowOrder, oldName)
+		c.WindowOrder[newName] = order
+	}
+}
+
+// PruneExpanded drops expansion state for sessions and windows that no longer
+// exist, so the file does not accumulate dead entries.
+func (c *Config) PruneExpanded(live map[string][]int) {
+	for session, windows := range c.Expanded {
+		liveWindows, ok := live[session]
+		if !ok {
+			delete(c.Expanded, session)
+			continue
+		}
+		kept := make([]int, 0, len(windows))
+		for _, idx := range windows {
+			for _, liveIdx := range liveWindows {
+				if idx == liveIdx {
+					kept = append(kept, idx)
+					break
+				}
+			}
+		}
+		c.Expanded[session] = kept
 	}
 }

@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -40,6 +43,7 @@ type Model struct {
 	sessionGrid  *Grid
 	windowGrid   *Grid
 	paneGrid     *Grid
+	tree         *Tree
 	previewPanel *PreviewPanel
 
 	// State.
@@ -50,13 +54,18 @@ type Model struct {
 	currentSess      string // session name when in window view
 	currentWin       int    // window index when in pane view
 	windowsBySession map[string][]string // session -> window names (for search)
+	allWindows       map[string][]tmux.Window
+	allPanes         map[string]map[int][]tmux.Pane
+	clientSess       string // session this tmux client is attached to
+	viewMode         string // config.ViewGrid | config.ViewList
 	helpShown     bool
-	markingMode   bool   // waiting for a mark-key press
-	markingTarget string // "session" or "window"
+	markingMode   bool        // waiting for a mark-key press
+	markingTarget focusTarget // item the pending mark will point at
 	filterMode    bool   // search input is active
 	filterQuery   string // current fuzzy-search term
 	dialog        *Dialog
 	pendingAction dialogAction
+	pendingTarget focusTarget // item the open dialog acts on
 	clipboard     *clipboard
 
 	// Viewport.
@@ -86,19 +95,22 @@ func NewModelWith(svc tmux.Service, appCfg *config.AppConfig) (*Model, error) {
 
 	styles := NewStyles()
 	m := &Model{
-		tmux:        svc,
-		config:      cfg,
-		appConfig:   appCfg,
-		styles:      styles,
-		width:       80,
-		height:      24,
-		currentMode: ModeSessionGrid,
+		tmux:           svc,
+		config:         cfg,
+		appConfig:      appCfg,
+		styles:         styles,
+		width:          80,
+		height:         24,
+		currentMode:    ModeSessionGrid,
+		viewMode:       cfg.Settings.ViewMode,
+		clientSess:     svc.CurrentSession(),
 	}
 
 	gridW, gridH, previewW, previewH := m.layoutSizes()
 	m.sessionGrid = NewGrid(gridW, gridH, styles)
 	m.windowGrid = NewGrid(gridW, gridH, styles)
 	m.paneGrid = NewGrid(gridW, gridH, styles)
+	m.tree = NewTree(gridW, gridH, styles)
 	if w := appCfg.UI.CardMinWidth; w > 0 {
 		m.sessionGrid.SetMinCardWidth(w)
 		m.windowGrid.SetMinCardWidth(w)
@@ -112,6 +124,7 @@ func NewModelWith(svc tmux.Service, appCfg *config.AppConfig) (*Model, error) {
 	if err := m.loadSessions(); err != nil {
 		m.setStatusError(err.Error())
 	}
+	m.focusInitialSession()
 
 	return m, nil
 }
@@ -155,6 +168,9 @@ func (m *Model) View() string {
 	if m.helpShown {
 		return m.renderHelp()
 	}
+	if m.isListView() {
+		return m.renderListView()
+	}
 	switch m.currentMode {
 	case ModeSessionGrid:
 		return m.renderSessionView()
@@ -190,6 +206,14 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	action := keys.Resolve(keyStr)
 
+	// The tree redefines navigation, folding and reordering; everything it
+	// leaves alone falls through to the handlers shared with the grid.
+	if m.isListView() {
+		if model, cmd, handled := m.handleTreeAction(action); handled {
+			return model, cmd
+		}
+	}
+
 	switch action {
 	case keys.ActionQuit:
 		return m, tea.Quit
@@ -199,6 +223,12 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keys.ActionToggleHelp:
 		m.helpShown = !m.helpShown
+
+	case keys.ActionToggleView:
+		return m.handleToggleView()
+
+	case keys.ActionCycleSort:
+		return m.handleCycleSort()
 
 	case keys.ActionTogglePreview:
 		m.previewPanel.ToggleMode()
@@ -236,6 +266,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keys.ActionMoveUp:
 		return m, m.moveFocus(0, -1)
+
 	case keys.ActionMoveDown:
 		return m, m.moveFocus(0, 1)
 	case keys.ActionMoveLeft:
@@ -280,28 +311,161 @@ func (m *Model) loadSessions() error {
 	if err != nil {
 		return err
 	}
-	sessions = m.applySavedSessionOrder(sessions)
-	m.sessions = sessions
 
-	// Pre-fetch all window names so session filtering can match against them.
-	if wbs, err := m.tmux.ListAllWindowNames(); err == nil {
-		m.windowsBySession = wbs
+	// One tmux call each for every window and pane on the server: the tree
+	// shows children of sessions it never drilled into, so fetching per
+	// session would mean one call per visible row.
+	if aw, err := m.tmux.ListAllWindows(); err == nil {
+		m.allWindows = aw
+	}
+	if ap, err := m.tmux.ListAllPanes(); err == nil {
+		m.allPanes = ap
 	}
 
-	// Pre-fetch total pane counts per session.
-	if paneCounts, err := m.tmux.ListAllPaneCounts(); err == nil {
-		for i := range sessions {
-			sessions[i].PaneCount = paneCounts[sessions[i].Name]
+	m.windowsBySession = make(map[string][]string, len(m.allWindows))
+	for name, windows := range m.allWindows {
+		for _, w := range windows {
+			m.windowsBySession[name] = append(m.windowsBySession[name], w.Name)
 		}
 	}
+	for i := range sessions {
+		total := 0
+		for _, w := range m.allWindows[sessions[i].Name] {
+			total += w.PaneCount
+		}
+		sessions[i].PaneCount = total
+	}
 
-	m.sessionGrid.SetItems(toGridItems(sessions, func(s tmux.Session) GridItem { return SessionCard{s} }))
-	m.sessionGrid.FocusFirstWhere(func(item GridItem) bool {
-		sc, ok := item.(SessionCard)
-		return ok && sc.session.Attached
-	})
+	m.sessions = m.orderSessions(sessions)
+	m.pruneExpanded()
+	m.resetSessionItems()
 	return nil
 }
+
+// resetSessionItems pushes the session list into both views, holding each one
+// on the item it was already focused on.
+func (m *Model) resetSessionItems() {
+	focus := m.sessionGrid.FocusIndex()
+	m.sessionGrid.SetItems(toGridItems(m.sessions, func(s tmux.Session) GridItem { return SessionCard{s} }))
+	if focus >= len(m.sessions) {
+		focus = len(m.sessions) - 1
+	}
+	m.sessionGrid.SetFocusIndex(focus)
+	m.rebuildTree()
+}
+
+// focusInitialSession places the cursor for a freshly opened TUI. The tree is
+// addressed by session name rather than by row number, because an expanded
+// session puts its own windows in the rows right below it.
+func (m *Model) focusInitialSession() {
+	idx := m.initialFocusIndex()
+	if idx >= len(m.sessions) {
+		return
+	}
+	m.sessionGrid.SetFocusIndex(idx)
+	name := m.sessions[idx].Name
+	m.tree.FocusRowWhere(func(r TreeRow) bool {
+		return r.Kind == NodeSession && r.Session == name
+	})
+}
+
+// orderSessions arranges sessions per the active sort mode, then lifts the
+// session this client is attached to to the top when pinning is on.
+func (m *Model) orderSessions(sessions []tmux.Session) []tmux.Session {
+	switch m.config.Settings.SortBy {
+	case config.SortName:
+		sort.SliceStable(sessions, func(i, j int) bool {
+			return naturalLess(sessions[i].Name, sessions[j].Name)
+		})
+	case config.SortManual:
+		sessions = m.applySavedSessionOrder(sessions)
+	default: // config.SortRecent
+		sort.SliceStable(sessions, func(i, j int) bool {
+			return sessions[i].LastActive.After(sessions[j].LastActive)
+		})
+	}
+
+	if m.config.PinCurrentFirst() && m.clientSess != "" {
+		for i, s := range sessions {
+			if s.Name != m.clientSess {
+				continue
+			}
+			pinned := append([]tmux.Session{s}, sessions[:i]...)
+			sessions = append(pinned, sessions[i+1:]...)
+			break
+		}
+	}
+	return sessions
+}
+
+// initialFocusIndex picks the row the cursor starts on. The current session is
+// the one row the user will never pick, so when it sits at the top the cursor
+// starts on the row below it: open, Enter, and you are back where you were.
+func (m *Model) initialFocusIndex() int {
+	if m.clientSess == "" {
+		for i, s := range m.sessions {
+			if s.Attached {
+				return i
+			}
+		}
+		return 0
+	}
+	if len(m.sessions) > 1 && m.sessions[0].Name == m.clientSess {
+		return 1
+	}
+	for i, s := range m.sessions {
+		if s.Name == m.clientSess {
+			return i
+		}
+	}
+	return 0
+}
+
+// pruneExpanded drops expansion state for sessions and windows tmux no longer
+// has, so state.yaml does not collect dead entries.
+func (m *Model) pruneExpanded() {
+	live := make(map[string][]int, len(m.allWindows))
+	for name, windows := range m.allWindows {
+		indices := make([]int, 0, len(windows))
+		for _, w := range windows {
+			indices = append(indices, w.Index)
+		}
+		live[name] = indices
+	}
+	m.config.PruneExpanded(live)
+}
+
+// naturalLess compares names case-insensitively with digit runs compared as
+// numbers, so session "2" sorts before "19" rather than after it.
+func naturalLess(a, b string) bool {
+	ar, br := []rune(strings.ToLower(a)), []rune(strings.ToLower(b))
+	i, j := 0, 0
+	for i < len(ar) && j < len(br) {
+		if isDigit(ar[i]) && isDigit(br[j]) {
+			si, sj := i, j
+			for i < len(ar) && isDigit(ar[i]) {
+				i++
+			}
+			for j < len(br) && isDigit(br[j]) {
+				j++
+			}
+			na, _ := strconv.Atoi(string(ar[si:i]))
+			nb, _ := strconv.Atoi(string(br[sj:j]))
+			if na != nb {
+				return na < nb
+			}
+			continue
+		}
+		if ar[i] != br[j] {
+			return ar[i] < br[j]
+		}
+		i++
+		j++
+	}
+	return len(ar)-i < len(br)-j
+}
+
+func isDigit(r rune) bool { return r >= '0' && r <= '9' }
 
 func (m *Model) loadWindows(sessionName string) error {
 	windows, err := m.tmux.ListWindows(sessionName)
@@ -340,6 +504,10 @@ func toGridItems[T any](items []T, wrap func(T) GridItem) []GridItem {
 // applyFilter re-filters the current mode's items from the full list and
 // updates the grid. Called whenever filterQuery changes.
 func (m *Model) applyFilter() {
+	if m.isListView() {
+		m.rebuildTree()
+		return
+	}
 	switch m.currentMode {
 	case ModeSessionGrid:
 		filtered := FilterSessions(m.sessions, m.filterQuery, m.windowsBySession)
@@ -489,13 +657,13 @@ func (m *Model) applyLayout() {
 	m.sessionGrid.SetSize(gridW, gridH)
 	m.windowGrid.SetSize(gridW, gridH)
 	m.paneGrid.SetSize(gridW, gridH)
+	m.tree.SetSize(gridW, gridH)
 
 	// The grid may not use its full allocated width (integer division
 	// remainder). Give the leftover to the preview so there's no gap.
 	const gap = 1
 	const previewBorder = 4
-	gridUsed := m.activeGrid().UsedWidth()
-	extraW := gridW - gridUsed
+	extraW := gridW - m.mainUsedWidth()
 	previewW += extraW
 	if previewW < previewBorder {
 		previewW = previewBorder
@@ -534,6 +702,16 @@ func (m *Model) statusMessage() string {
 	return m.statusMsg
 }
 
+// mainUsedWidth is the width the left pane actually occupies. Cards leave a
+// remainder when the grid width does not divide evenly; the tree does not.
+func (m *Model) mainUsedWidth() int {
+	if m.isListView() {
+		gridW, _, _, _ := m.layoutSizes()
+		return gridW
+	}
+	return m.activeGrid().UsedWidth()
+}
+
 func (m *Model) activeGrid() *Grid {
 	switch m.currentMode {
 	case ModeWindowGrid:
@@ -545,3 +723,101 @@ func (m *Model) activeGrid() *Grid {
 	}
 }
 
+
+// ---------------------------------------------------------------------------
+// Focus target
+// ---------------------------------------------------------------------------
+
+// targetKind says which tmux object the user is acting on.
+type targetKind int
+
+const (
+	targetSession targetKind = iota
+	targetWindow
+	targetPane
+)
+
+// focusTarget identifies the item under the cursor independently of the view
+// mode. The grid derives it from the current drill-down level, the tree from
+// the depth of the focused row, so handlers below need no view-mode branch.
+type focusTarget struct {
+	kind    targetKind
+	session string
+	window  int // -1 for session targets
+	pane    int // -1 for session and window targets
+	ok      bool
+}
+
+func (m *Model) focusedTarget() focusTarget {
+	if m.isListView() {
+		row, ok := m.tree.Focused()
+		if !ok {
+			return focusTarget{}
+		}
+		switch row.Kind {
+		case NodeWindow:
+			return focusTarget{kind: targetWindow, session: row.Session, window: row.Window, pane: -1, ok: true}
+		case NodePane:
+			return focusTarget{kind: targetPane, session: row.Session, window: row.Window, pane: row.Pane, ok: true}
+		default:
+			return focusTarget{kind: targetSession, session: row.Session, window: -1, pane: -1, ok: true}
+		}
+	}
+
+	switch m.currentMode {
+	case ModeWindowGrid:
+		card, ok := m.windowGrid.GetFocused().(WindowCard)
+		if !ok {
+			return focusTarget{}
+		}
+		return focusTarget{kind: targetWindow, session: m.currentSess, window: card.window.Index, pane: -1, ok: true}
+	case ModePaneGrid:
+		card, ok := m.paneGrid.GetFocused().(PaneCard)
+		if !ok {
+			return focusTarget{}
+		}
+		return focusTarget{kind: targetPane, session: m.currentSess, window: m.currentWin, pane: card.pane.Index, ok: true}
+	default:
+		card, ok := m.sessionGrid.GetFocused().(SessionCard)
+		if !ok {
+			return focusTarget{}
+		}
+		return focusTarget{kind: targetSession, session: card.session.Name, window: -1, pane: -1, ok: true}
+	}
+}
+
+func (m *Model) isListView() bool { return m.viewMode == config.ViewList }
+
+func (m *Model) sessionByName(name string) (tmux.Session, bool) {
+	for _, s := range m.sessions {
+		if s.Name == name {
+			return s, true
+		}
+	}
+	return tmux.Session{}, false
+}
+
+func (m *Model) windowAt(session string, index int) (tmux.Window, bool) {
+	for _, w := range m.windowsOf(session) {
+		if w.Index == index {
+			return w, true
+		}
+	}
+	return tmux.Window{}, false
+}
+
+func (m *Model) paneAt(session string, windowIndex, paneIndex int) (tmux.Pane, bool) {
+	if session == m.currentSess && windowIndex == m.currentWin {
+		for _, p := range m.panes {
+			if p.Index == paneIndex {
+				return p, true
+			}
+		}
+	}
+	for _, p := range m.panesOf(session, windowIndex) {
+		if p.Index == paneIndex {
+			return p, true
+		}
+	}
+	return tmux.Pane{}, false
+}

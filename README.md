@@ -52,7 +52,7 @@ Add to your `~/.tmux.conf`:
 
 ```tmux
 # Open session/window switcher as a popup
-bind-key s display-popup -E -w 80% -h 80% "tswitch"
+bind-key S display-popup -E -w 80% -h 80% "tswitch"
 
 # Switch to the previous session
 bind-key l run-shell "tswitch last"
@@ -74,12 +74,14 @@ Reload with `tmux source-file ~/.tmux.conf`. Requires tmux 3.2+ for `display-pop
 
 | Key | Action |
 |-----|--------|
-| `h/j/k/l` or arrows | Navigate the grid |
-| `o` | Drill into focused item (session → windows → panes) |
+| `h/j/k/l` or arrows | Navigate |
+| `v` | Switch between card grid and tree list |
+| `s` | Cycle session sort: `recent`, `name`, `manual` |
+| `o` | Grid: drill into focused item. List: fold/unfold |
 | `Enter` | Switch directly to focused item |
 | `Space` | Quick-switch to session's active window |
-| `Esc` | Back one level / quit |
-| `H/J/K/L` | Reorder focused item (Shift + direction) |
+| `Esc` | Back one level / fold / quit |
+| `H/J/K/L` | Grid: reorder focused item. List: `J/K` reorder, `H/L` fold/unfold all |
 | `m` + key | Mark current item with a hotkey |
 | _mark key_ | Jump to marked session/window |
 | `/` | Fuzzy search filter |
@@ -92,6 +94,26 @@ Reload with `tmux source-file ~/.tmux.conf`. Requires tmux 3.2+ for `display-pop
 | `t` | Tag focused session |
 | `?` | Help overlay |
 | `q` | Quit |
+
+## Views
+
+`v` switches between two ways of showing the same sessions, and the choice is remembered.
+
+**Grid** — cards laid out left to right, then top to bottom. `o` drills down one level at a time: sessions, then windows, then panes.
+
+**List** — an indented tree where sessions, windows and panes share one screen. Every node starts folded, so a long session list fits without scrolling; `o` or `l` unfolds the node under the cursor and `h` folds it again. Fold state is remembered between runs. `Enter` switches to whatever the cursor is on, at any depth.
+
+## Sorting
+
+`s` cycles the session order and remembers the choice:
+
+| Mode | Order |
+|------|-------|
+| `recent` | most recently attached first (the default) |
+| `name` | by name, with digit runs compared as numbers so `2` sorts before `19` |
+| `manual` | the order you built with `H/J/K/L`, stored in `session_order` |
+
+The session you are currently in is pinned to the top in every mode, and the cursor starts on the row below it, so opening the switcher and pressing `Enter` takes you back where you came from. Reordering keys only apply in `manual` mode.
 
 ## Configuration
 
@@ -106,7 +128,7 @@ The first file found wins; if neither exists, tswitch runs with defaults (no cus
 
 A complete reference config listing every supported key binding, `browse_dirs`, and `browse_exclude` is checked into the repo at [`tswitch-config.json`](./tswitch-config.json) — use it as a starting template. Save it to `~/.tswitch/tswitch-config.json` and it will be picked up by any `tswitch` binary on your system.
 
-**`keys`** — override default key bindings. Action names: `move_up`, `move_down`, `move_left`, `move_right`, `confirm`, `quick_swap`, `back`, `start_mark`, `new`, `rename`, `kill`, `cut`, `paste`, `tag`, `reorder_up`, `reorder_down`, `reorder_left`, `reorder_right`, `toggle_preview`, `toggle_help`, `filter`, `quit`.
+**`keys`** — override default key bindings. Action names: `move_up`, `move_down`, `move_left`, `move_right`, `confirm`, `quick_swap`, `direct_switch`, `back`, `start_mark`, `new`, `rename`, `kill`, `cut`, `paste`, `tag`, `reorder_up`, `reorder_down`, `reorder_left`, `reorder_right`, `toggle_view`, `cycle_sort`, `toggle_preview`, `toggle_help`, `filter`, `quit`, `browse_dirs`.
 
 **`ui.card_min_width`** — minimum card content width in characters (default: `16`). Increase this to fit longer session/window names without truncation; for example, `20` is a good value if your names regularly exceed 11–12 characters. Wider cards mean fewer columns on the same terminal width.
 
@@ -117,7 +139,9 @@ A complete reference config listing every supported key binding, `browse_dirs`, 
 
 ### Runtime state — `~/.tswitch/state.yaml`
 
-Auto-managed by tswitch. Stores marks, session/window ordering, and tags. You normally don't need to edit this by hand.
+Auto-managed by tswitch. Stores marks, session/window ordering, tags, the fold state of the tree list, and the last-used view, sort and preview modes. You normally don't need to edit this by hand.
+
+`settings.pin_current_first` is the one knob with no key bound to it: set it to `false` to stop pinning the current session to the top of the list.
 
 ## Troubleshooting
 

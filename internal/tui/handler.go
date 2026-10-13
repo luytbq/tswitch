@@ -27,60 +27,65 @@ const (
 )
 
 func (m *Model) handleNew() (tea.Model, tea.Cmd) {
-	switch m.currentMode {
-	case ModeSessionGrid:
+	target := m.focusedTarget()
+	if !target.ok {
+		return m, nil
+	}
+	m.pendingTarget = target
+	if target.kind == targetSession {
 		m.dialog = NewInputDialog("New Session", "Session name:", "", m.styles)
 		m.pendingAction = dialogNewSession
-	case ModeWindowGrid:
-		m.dialog = NewInputDialog("New Window", "Window name:", "", m.styles)
-		m.pendingAction = dialogNewWindow
-	case ModePaneGrid:
-		// No-op: pane creation is not supported.
+		return m, nil
 	}
+	// Below the session level, a new window belongs to the session in focus.
+	m.dialog = NewInputDialog("New Window", "Window name:", "", m.styles)
+	m.pendingAction = dialogNewWindow
 	return m, nil
 }
 
 func (m *Model) handleRename() (tea.Model, tea.Cmd) {
-	switch m.currentMode {
-	case ModeSessionGrid:
-		card, ok := m.sessionGrid.GetFocused().(SessionCard)
-		if !ok {
-			return m, nil
-		}
-		m.dialog = NewInputDialog("Rename Session", "New name:", card.session.Name, m.styles)
+	target := m.focusedTarget()
+	if !target.ok {
+		return m, nil
+	}
+	m.pendingTarget = target
+	switch target.kind {
+	case targetSession:
+		m.dialog = NewInputDialog("Rename Session", "New name:", target.session, m.styles)
 		m.pendingAction = dialogRenameSession
-	case ModeWindowGrid:
-		card, ok := m.windowGrid.GetFocused().(WindowCard)
+	case targetWindow:
+		w, ok := m.windowAt(target.session, target.window)
 		if !ok {
 			return m, nil
 		}
-		m.dialog = NewInputDialog("Rename Window", "New name:", card.window.Name, m.styles)
+		m.dialog = NewInputDialog("Rename Window", "New name:", w.Name, m.styles)
 		m.pendingAction = dialogRenameWindow
-	case ModePaneGrid:
+	case targetPane:
 		// No-op: pane renaming is not supported.
 	}
 	return m, nil
 }
 
 func (m *Model) handleKill() (tea.Model, tea.Cmd) {
-	switch m.currentMode {
-	case ModeSessionGrid:
-		card, ok := m.sessionGrid.GetFocused().(SessionCard)
-		if !ok {
-			return m, nil
-		}
+	target := m.focusedTarget()
+	if !target.ok {
+		return m, nil
+	}
+	m.pendingTarget = target
+	switch target.kind {
+	case targetSession:
 		m.dialog = NewConfirmDialog("Kill Session",
-			fmt.Sprintf("Kill session %q?", card.session.Name), m.styles)
+			fmt.Sprintf("Kill session %q?", target.session), m.styles)
 		m.pendingAction = dialogKillSession
-	case ModeWindowGrid:
-		card, ok := m.windowGrid.GetFocused().(WindowCard)
+	case targetWindow:
+		w, ok := m.windowAt(target.session, target.window)
 		if !ok {
 			return m, nil
 		}
 		m.dialog = NewConfirmDialog("Kill Window",
-			fmt.Sprintf("Kill window %q?", card.window.Name), m.styles)
+			fmt.Sprintf("Kill window %q?", w.Name), m.styles)
 		m.pendingAction = dialogKillWindow
-	case ModePaneGrid:
+	case targetPane:
 		// No-op: pane killing is not supported.
 	}
 	return m, nil
@@ -154,19 +159,19 @@ func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
 		return m, m.syncPreview()
 
 	case dialogRenameSession:
-		card, ok := m.sessionGrid.GetFocused().(SessionCard)
-		if !ok {
-			return m, nil
-		}
+		oldName := m.pendingTarget.session
 		name := strings.TrimSpace(d.Input)
 		if name == "" {
 			m.setStatusError("session name cannot be empty")
 			return m, nil
 		}
-		if err := m.tmux.RenameSession(card.session.Name, name); err != nil {
+		if err := m.tmux.RenameSession(oldName, name); err != nil {
 			m.setStatusError(err.Error())
 			return m, nil
 		}
+		// Saved state is keyed by session name, so it has to follow the rename.
+		m.config.RenameSessionState(oldName, name)
+		m.saveState()
 		m.setStatus("Renamed to: " + name)
 		return m.refreshSessions()
 
@@ -174,11 +179,7 @@ func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
 		if d.SelectedIdx != 0 {
 			return m, nil // "No" selected
 		}
-		card, ok := m.sessionGrid.GetFocused().(SessionCard)
-		if !ok {
-			return m, nil
-		}
-		name := card.session.Name
+		name := m.pendingTarget.session
 		if err := m.tmux.KillSession(name); err != nil {
 			m.setStatusError(err.Error())
 			return m, nil
@@ -192,48 +193,42 @@ func (m *Model) submitDialog() (tea.Model, tea.Cmd) {
 			m.setStatusError("window name cannot be empty")
 			return m, nil
 		}
-		if err := m.tmux.NewWindow(m.currentSess, name); err != nil {
+		if err := m.tmux.NewWindow(m.pendingTarget.session, name); err != nil {
 			m.setStatusError(err.Error())
 			return m, nil
 		}
 		m.setStatus("Created: " + name)
-		_ = m.loadWindows(m.currentSess)
-		m.applyFilter()
-		m.windowGrid.FocusFirstWhere(func(item GridItem) bool { return item.Title() == name })
-		return m, m.syncPreview()
+		return m.refreshAfterWindowChange(name)
 
 	case dialogRenameWindow:
-		card, ok := m.windowGrid.GetFocused().(WindowCard)
-		if !ok {
-			return m, nil
-		}
+		target := m.pendingTarget
 		name := strings.TrimSpace(d.Input)
 		if name == "" {
 			m.setStatusError("window name cannot be empty")
 			return m, nil
 		}
-		if err := m.tmux.RenameWindow(m.currentSess, card.window.Index, name); err != nil {
+		if err := m.tmux.RenameWindow(target.session, target.window, name); err != nil {
 			m.setStatusError(err.Error())
 			return m, nil
 		}
 		m.setStatus("Renamed to: " + name)
-		return m.refreshWindows()
+		return m.refreshAfterWindowChange("")
 
 	case dialogKillWindow:
 		if d.SelectedIdx != 0 {
 			return m, nil // "No" selected
 		}
-		card, ok := m.windowGrid.GetFocused().(WindowCard)
+		target := m.pendingTarget
+		w, ok := m.windowAt(target.session, target.window)
 		if !ok {
 			return m, nil
 		}
-		name := card.window.Name
-		if err := m.tmux.KillWindow(m.currentSess, card.window.Index); err != nil {
+		if err := m.tmux.KillWindow(target.session, target.window); err != nil {
 			m.setStatusError(err.Error())
 			return m, nil
 		}
-		m.setStatus("Killed: " + name)
-		return m.refreshWindows()
+		m.setStatus("Killed: " + w.Name)
+		return m.refreshAfterWindowChange("")
 	}
 	return m, nil
 }
@@ -324,7 +319,7 @@ func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 				w := m.windows[0]
 				if w.PaneCount <= 1 {
 					// Single window, single pane: switch immediately.
-					if err := m.tmux.SelectPane(card.session.Name, w.Index, 0); err != nil {
+					if err := m.switchTo(focusTarget{kind: targetPane, session: card.session.Name, window: w.Index}); err != nil {
 						m.setStatusError(err.Error())
 						return m, nil
 					}
@@ -357,7 +352,7 @@ func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 		}
 		// Single-pane window: switch immediately.
 		if card.window.PaneCount <= 1 {
-			if err := m.tmux.SelectPane(m.currentSess, card.window.Index, 0); err != nil {
+			if err := m.switchTo(focusTarget{kind: targetPane, session: m.currentSess, window: card.window.Index}); err != nil {
 				m.setStatusError(err.Error())
 			} else {
 				return m, tea.Quit
@@ -380,33 +375,35 @@ func (m *Model) handleConfirm() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// switchTo moves the client onto the target. Selecting a pane only changes
+// which pane is active inside its own window, so the client still has to be
+// switched for the user to end up there.
+func (m *Model) switchTo(target focusTarget) error {
+	switch target.kind {
+	case targetPane:
+		if err := m.tmux.SelectPane(target.session, target.window, target.pane); err != nil {
+			return err
+		}
+		return m.tmux.SwitchClient(target.session, target.window)
+	case targetWindow:
+		return m.tmux.SwitchClient(target.session, target.window)
+	default:
+		return m.tmux.SwitchToSession(target.session)
+	}
+}
+
 // handleQuickSwap switches to the focused item at any level.
 func (m *Model) handleQuickSwap() (tea.Model, tea.Cmd) {
-	var err error
-	switch m.currentMode {
-	case ModeSessionGrid:
-		card, ok := m.sessionGrid.GetFocused().(SessionCard)
-		if !ok || card.session.WindowCount == 0 {
-			return m, nil
-		}
-		err = m.tmux.SwitchToSession(card.session.Name)
-
-	case ModeWindowGrid:
-		card, ok := m.windowGrid.GetFocused().(WindowCard)
-		if !ok {
-			return m, nil
-		}
-		err = m.tmux.SwitchClient(m.currentSess, card.window.Index)
-
-	case ModePaneGrid:
-		card, ok := m.paneGrid.GetFocused().(PaneCard)
-		if !ok {
-			return m, nil
-		}
-		err = m.tmux.SelectPane(m.currentSess, m.currentWin, card.pane.Index)
+	target := m.focusedTarget()
+	if !target.ok {
+		return m, nil
 	}
 
-	if err != nil {
+	if s, ok := m.sessionByName(target.session); ok && s.WindowCount == 0 {
+		return m, nil
+	}
+
+	if err := m.switchTo(target); err != nil {
 		m.setStatusError(err.Error())
 		return m, nil
 	}
@@ -420,14 +417,7 @@ func (m *Model) handleQuickSwap() (tea.Model, tea.Cmd) {
 // enterMarkingMode puts the model into mark-assignment mode.
 func (m *Model) enterMarkingMode() {
 	m.markingMode = true
-	switch m.currentMode {
-	case ModeSessionGrid:
-		m.markingTarget = "session"
-	case ModeWindowGrid:
-		m.markingTarget = "window"
-	case ModePaneGrid:
-		m.markingTarget = "pane"
-	}
+	m.markingTarget = m.focusedTarget()
 }
 
 // handleMarkAssignment processes a key press while in marking mode.
@@ -445,44 +435,37 @@ func (m *Model) handleMarkAssignment(keyStr string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	switch m.markingTarget {
-	case "session":
-		card, ok := m.sessionGrid.GetFocused().(SessionCard)
-		if !ok {
-			return m, nil
-		}
+	target := m.markingTarget
+	if !target.ok {
+		return m, nil
+	}
+
+	switch target.kind {
+	case targetSession:
 		// Remove any existing mark pointing to the same target before setting new one.
-		m.config.RemoveMarksForTarget(card.session.Name, -1)
-		m.config.SetMark(keyStr, card.session.Name, -1, 0)
+		m.config.RemoveMarksForTarget(target.session, -1)
+		m.config.SetMark(keyStr, target.session, -1, 0)
 		if err := config.SaveState(m.config); err != nil {
 			m.setStatusError(fmt.Sprintf("Failed to save: %v", err))
 		} else {
-			m.setStatus(fmt.Sprintf("Marked %s -> [%s]", card.session.Name, keyStr))
+			m.setStatus(fmt.Sprintf("Marked %s -> [%s]", target.session, keyStr))
 		}
 
-	case "window":
-		card, ok := m.windowGrid.GetFocused().(WindowCard)
-		if !ok {
-			return m, nil
-		}
-		m.config.RemoveMarksForTarget(m.currentSess, card.window.Index)
-		m.config.SetMark(keyStr, m.currentSess, card.window.Index, 0)
+	case targetWindow:
+		m.config.RemoveMarksForTarget(target.session, target.window)
+		m.config.SetMark(keyStr, target.session, target.window, 0)
 		if err := config.SaveState(m.config); err != nil {
 			m.setStatusError(fmt.Sprintf("Failed to save: %v", err))
 		} else {
-			m.setStatus(fmt.Sprintf("Marked %s:%d -> [%s]", m.currentSess, card.window.Index, keyStr))
+			m.setStatus(fmt.Sprintf("Marked %s:%d -> [%s]", target.session, target.window, keyStr))
 		}
 
-	case "pane":
-		card, ok := m.paneGrid.GetFocused().(PaneCard)
-		if !ok {
-			return m, nil
-		}
-		m.config.SetMark(keyStr, m.currentSess, m.currentWin, card.pane.Index)
+	case targetPane:
+		m.config.SetMark(keyStr, target.session, target.window, target.pane)
 		if err := config.SaveState(m.config); err != nil {
 			m.setStatusError(fmt.Sprintf("Failed to save: %v", err))
 		} else {
-			m.setStatus(fmt.Sprintf("Marked %s:%d.%d -> [%s]", m.currentSess, m.currentWin, card.pane.Index, keyStr))
+			m.setStatus(fmt.Sprintf("Marked %s:%d.%d -> [%s]", target.session, target.window, target.pane, keyStr))
 		}
 	}
 
@@ -497,17 +480,17 @@ func (m *Model) handleJumpToMark(keyStr string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	var err error
-	if mark.PaneIndex > 0 {
-		// Pane-level mark: switch to exact pane.
-		err = m.tmux.SelectPane(mark.SessionName, mark.WindowIndex, mark.PaneIndex)
-	} else if mark.WindowIndex < 0 {
-		// Session-level mark: let tmux pick the active window.
-		err = m.tmux.SwitchToSession(mark.SessionName)
-	} else {
-		err = m.tmux.SwitchClient(mark.SessionName, mark.WindowIndex)
+	target := focusTarget{kind: targetSession, session: mark.SessionName, window: -1, pane: -1}
+	switch {
+	case mark.PaneIndex > 0:
+		target.kind = targetPane
+		target.window = mark.WindowIndex
+		target.pane = mark.PaneIndex
+	case mark.WindowIndex >= 0:
+		target.kind = targetWindow
+		target.window = mark.WindowIndex
 	}
-	if err != nil {
+	if err := m.switchTo(target); err != nil {
 		m.setStatusError(err.Error())
 		return m, nil
 	}
@@ -527,18 +510,23 @@ func (m *Model) syncPreview() tea.Cmd {
 		m.previewPanel.SetCaptureContent("") // clear stale content
 		return m.fetchCapture()
 	}
-	switch m.currentMode {
-	case ModeSessionGrid:
-		if card, ok := m.sessionGrid.GetFocused().(SessionCard); ok {
-			m.previewPanel.SetSessionMetadata(card.session)
+
+	target := m.focusedTarget()
+	if !target.ok {
+		return nil
+	}
+	switch target.kind {
+	case targetWindow:
+		if w, ok := m.windowAt(target.session, target.window); ok {
+			m.previewPanel.SetWindowMetadata(w)
 		}
-	case ModeWindowGrid:
-		if card, ok := m.windowGrid.GetFocused().(WindowCard); ok {
-			m.previewPanel.SetWindowMetadata(card.window)
+	case targetPane:
+		if p, ok := m.paneAt(target.session, target.window, target.pane); ok {
+			m.previewPanel.SetPaneMetadata(p)
 		}
-	case ModePaneGrid:
-		if card, ok := m.paneGrid.GetFocused().(PaneCard); ok {
-			m.previewPanel.SetPaneMetadata(card.pane)
+	default:
+		if sess, ok := m.sessionByName(target.session); ok {
+			m.previewPanel.SetSessionMetadata(sess)
 		}
 	}
 	return nil
@@ -547,35 +535,16 @@ func (m *Model) syncPreview() tea.Cmd {
 // fetchCapture returns a Cmd that runs tmux capture-pane for the focused item
 // in a goroutine and delivers the result as a captureResultMsg.
 func (m *Model) fetchCapture() tea.Cmd {
-	var sessName string
-	winIdx := -1 // -1 = active window of the session
-
-	paneIdx := 0
-
-	switch m.currentMode {
-	case ModeSessionGrid:
-		card, ok := m.sessionGrid.GetFocused().(SessionCard)
-		if !ok {
-			return nil
-		}
-		sessName = card.session.Name
-	case ModeWindowGrid:
-		card, ok := m.windowGrid.GetFocused().(WindowCard)
-		if !ok {
-			return nil
-		}
-		sessName = m.currentSess
-		winIdx = card.window.Index
-	case ModePaneGrid:
-		card, ok := m.paneGrid.GetFocused().(PaneCard)
-		if !ok {
-			return nil
-		}
-		sessName = m.currentSess
-		winIdx = m.currentWin
-		paneIdx = card.pane.Index
-	default:
+	target := m.focusedTarget()
+	if !target.ok {
 		return nil
+	}
+
+	sessName := target.session
+	winIdx := target.window // -1 on a session target: capture its active window
+	paneIdx := target.pane
+	if paneIdx < 0 {
+		paneIdx = 0
 	}
 
 	return func() tea.Msg {
@@ -613,35 +582,36 @@ func (m *Model) handleCut() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	switch m.currentMode {
-	case ModeWindowGrid:
-		card, ok := m.windowGrid.GetFocused().(WindowCard)
+	target := m.focusedTarget()
+	if !target.ok {
+		return m, nil
+	}
+
+	switch target.kind {
+	case targetWindow:
+		w, ok := m.windowAt(target.session, target.window)
 		if !ok {
 			return m, nil
 		}
 		m.clipboard = &clipboard{
 			kind:    "window",
-			srcSess: m.currentSess,
-			srcWin:  card.window.Index,
-			label:   fmt.Sprintf("window %q from %s", card.window.Name, m.currentSess),
+			srcSess: target.session,
+			srcWin:  target.window,
+			label:   fmt.Sprintf("window %q from %s", w.Name, target.session),
 		}
 		m.setStatus("cut: " + m.clipboard.label)
 
-	case ModePaneGrid:
-		card, ok := m.paneGrid.GetFocused().(PaneCard)
-		if !ok {
-			return m, nil
-		}
+	case targetPane:
 		m.clipboard = &clipboard{
 			kind:    "pane",
-			srcSess: m.currentSess,
-			srcWin:  m.currentWin,
-			srcPane: card.pane.Index,
-			label:   fmt.Sprintf("pane %d from %s:%d", card.pane.Index, m.currentSess, m.currentWin),
+			srcSess: target.session,
+			srcWin:  target.window,
+			srcPane: target.pane,
+			label:   fmt.Sprintf("pane %d from %s:%d", target.pane, target.session, target.window),
 		}
 		m.setStatus("cut: " + m.clipboard.label)
 
-	case ModeSessionGrid:
+	case targetSession:
 		m.setStatusError("nothing to cut here")
 	}
 	return m, nil
@@ -656,59 +626,50 @@ func (m *Model) handlePaste() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	target := m.focusedTarget()
+	if !target.ok {
+		return m, nil
+	}
+
 	switch cb.kind {
 	case "window":
-		if m.currentMode != ModeSessionGrid {
-			m.setStatusError("paste a window on a session (back out first)")
+		if target.kind != targetSession {
+			m.setStatusError("paste a window onto a session")
 			return m, nil
 		}
-		card, ok := m.sessionGrid.GetFocused().(SessionCard)
-		if !ok {
-			return m, nil
-		}
-		if card.session.Name == cb.srcSess {
+		if target.session == cb.srcSess {
 			m.setStatusError("already in this session")
 			return m, nil
 		}
-		if err := m.tmux.MoveWindow(cb.srcSess, cb.srcWin, card.session.Name); err != nil {
+		if err := m.tmux.MoveWindow(cb.srcSess, cb.srcWin, target.session); err != nil {
 			m.setStatusError(err.Error())
 			return m, nil
 		}
-		m.setStatus(fmt.Sprintf("moved %s → %s", cb.label, card.session.Name))
-		m.clipboard = nil
-		_ = m.loadSessions()
-		m.applyFilter()
-		return m, m.syncPreview()
+		m.setStatus(fmt.Sprintf("moved %s to %s", cb.label, target.session))
 
 	case "pane":
-		switch m.currentMode {
-		case ModeSessionGrid:
-			m.setStatusError("cannot paste pane onto session — drill in and pick a window")
-			return m, nil
-		case ModePaneGrid:
-			m.setStatusError("cannot paste pane onto a pane — back out to window grid")
+		if target.kind != targetWindow {
+			m.setStatusError("paste a pane onto a window")
 			return m, nil
 		}
-		// ModeWindowGrid
-		card, ok := m.windowGrid.GetFocused().(WindowCard)
-		if !ok {
-			return m, nil
-		}
-		if m.currentSess == cb.srcSess && card.window.Index == cb.srcWin {
+		if target.session == cb.srcSess && target.window == cb.srcWin {
 			m.setStatusError("already in this window")
 			return m, nil
 		}
-		if err := m.tmux.JoinPane(cb.srcSess, cb.srcWin, cb.srcPane, m.currentSess, card.window.Index); err != nil {
+		if err := m.tmux.JoinPane(cb.srcSess, cb.srcWin, cb.srcPane, target.session, target.window); err != nil {
 			m.setStatusError(err.Error())
 			return m, nil
 		}
-		m.setStatus(fmt.Sprintf("moved %s → %s:%d", cb.label, m.currentSess, card.window.Index))
-		m.clipboard = nil
-		_ = m.loadWindows(m.currentSess)
-		m.applyFilter()
-		return m, m.syncPreview()
+		m.setStatus(fmt.Sprintf("moved %s to %s:%d", cb.label, target.session, target.window))
 	}
-	return m, nil
+
+	m.clipboard = nil
+	_ = m.loadSessions()
+	if !m.isListView() && m.currentMode != ModeSessionGrid {
+		_ = m.loadWindows(m.currentSess)
+	}
+	m.applyFilter()
+	return m, m.syncPreview()
 }
 
 // handleReorder swaps the focused item with its neighbor and persists the new order.
@@ -722,6 +683,10 @@ func (m *Model) handleReorder(dx, dy int) (tea.Model, tea.Cmd) {
 	// Extract and persist the new order.
 	switch m.currentMode {
 	case ModeSessionGrid:
+		if m.config.Settings.SortBy != config.SortManual {
+			m.setStatusError("reorder needs sort: manual (press s)")
+			return m, nil
+		}
 		if !grid.MoveItem(dx, dy) {
 			return m, nil
 		}
@@ -779,5 +744,263 @@ func (m *Model) handleReorder(dx, dy int) (tea.Model, tea.Cmd) {
 	if err := config.SaveState(m.config); err != nil {
 		m.setStatusError(err.Error())
 	}
+	m.rebuildTree()
 	return m, m.syncPreview()
+}
+
+// ---------------------------------------------------------------------------
+// View mode / sort
+// ---------------------------------------------------------------------------
+
+// saveState persists runtime state, reporting failures in the status bar.
+func (m *Model) saveState() {
+	if err := config.SaveState(m.config); err != nil {
+		m.setStatusError(err.Error())
+	}
+}
+
+// refreshAfterWindowChange reloads after a window was created, renamed or
+// killed, optionally putting the cursor on a window by name.
+func (m *Model) refreshAfterWindowChange(focusName string) (tea.Model, tea.Cmd) {
+	_ = m.loadSessions()
+	inWindowGrid := !m.isListView() && m.currentMode == ModeWindowGrid
+	if inWindowGrid {
+		_ = m.loadWindows(m.currentSess)
+	}
+	m.applyFilter()
+	if focusName != "" && inWindowGrid {
+		m.windowGrid.FocusFirstWhere(func(item GridItem) bool {
+			return strings.HasSuffix(item.Title(), ": "+focusName)
+		})
+	}
+	return m, m.syncPreview()
+}
+
+// handleToggleView swaps between the card grid and the tree list, keeping the
+// cursor on the same session.
+func (m *Model) handleToggleView() (tea.Model, tea.Cmd) {
+	target := m.focusedTarget()
+
+	if m.isListView() {
+		m.viewMode = config.ViewGrid
+	} else {
+		m.viewMode = config.ViewList
+	}
+	// The tree spans all three levels on its own, so leaving the grid means
+	// leaving its drill-down state behind.
+	m.currentMode = ModeSessionGrid
+	m.config.Settings.ViewMode = m.viewMode
+	m.saveState()
+
+	m.applyLayout()
+	m.applyFilter()
+
+	if target.ok {
+		if m.isListView() {
+			m.tree.FocusRowWhere(func(r TreeRow) bool {
+				return r.Kind == NodeSession && r.Session == target.session
+			})
+		} else {
+			m.sessionGrid.FocusFirstWhere(func(item GridItem) bool { return item.Title() == target.session })
+		}
+	}
+	return m, m.syncPreview()
+}
+
+// handleCycleSort rotates the session sort mode and re-sorts in place.
+func (m *Model) handleCycleSort() (tea.Model, tea.Cmd) {
+	switch m.config.Settings.SortBy {
+	case config.SortRecent:
+		m.config.Settings.SortBy = config.SortName
+	case config.SortName:
+		m.config.Settings.SortBy = config.SortManual
+	default:
+		m.config.Settings.SortBy = config.SortRecent
+	}
+	m.saveState()
+
+	target := m.focusedTarget()
+	m.sessions = m.orderSessions(m.sessions)
+	m.resetSessionItems()
+	m.applyFilter()
+	if target.ok {
+		m.tree.FocusRowWhere(func(r TreeRow) bool {
+			return r.Kind == NodeSession && r.Session == target.session
+		})
+		m.sessionGrid.FocusFirstWhere(func(item GridItem) bool { return item.Title() == target.session })
+	}
+	m.setStatus("sort: " + m.config.Settings.SortBy)
+	return m, m.syncPreview()
+}
+
+// ---------------------------------------------------------------------------
+// Tree navigation
+// ---------------------------------------------------------------------------
+
+// handleTreeAction handles the actions whose meaning changes in the tree view.
+// It reports whether it consumed the action; everything else falls through to
+// the shared handlers, which work off the focused target either way.
+func (m *Model) handleTreeAction(action keys.Action) (tea.Model, tea.Cmd, bool) {
+	switch action {
+	case keys.ActionMoveUp:
+		m.tree.MoveFocus(-1)
+		return m, m.syncPreview(), true
+
+	case keys.ActionMoveDown:
+		m.tree.MoveFocus(1)
+		return m, m.syncPreview(), true
+
+	case keys.ActionMoveLeft:
+		row, ok := m.tree.Focused()
+		if !ok {
+			return m, nil, true
+		}
+		if row.Expanded {
+			return m.setRowExpanded(row, false)
+		}
+		m.tree.FocusParent()
+		return m, m.syncPreview(), true
+
+	case keys.ActionMoveRight:
+		row, ok := m.tree.Focused()
+		if !ok {
+			return m, nil, true
+		}
+		if row.Expandable && !row.Expanded {
+			return m.setRowExpanded(row, true)
+		}
+		if row.Expanded {
+			m.tree.MoveFocus(1) // step onto the first child
+		}
+		return m, m.syncPreview(), true
+
+	case keys.ActionConfirm:
+		row, ok := m.tree.Focused()
+		if !ok {
+			return m, nil, true
+		}
+		if !row.Expandable {
+			// Nothing to unfold: treat it as "take me there".
+			model, cmd := m.handleQuickSwap()
+			return model, cmd, true
+		}
+		return m.setRowExpanded(row, !row.Expanded)
+
+	case keys.ActionReorderLeft:
+		m.config.CollapseAll()
+		m.saveState()
+		m.rebuildTree()
+		return m, m.syncPreview(), true
+
+	case keys.ActionReorderRight:
+		for _, s := range m.sessions {
+			if len(m.windowsOf(s.Name)) > 0 {
+				m.config.SetSessionExpanded(s.Name, true)
+			}
+		}
+		m.saveState()
+		m.rebuildTree()
+		return m, m.syncPreview(), true
+
+	case keys.ActionReorderUp:
+		return m.handleTreeReorder(-1)
+
+	case keys.ActionReorderDown:
+		return m.handleTreeReorder(1)
+
+	case keys.ActionBack:
+		if m.markingMode || m.helpShown {
+			return m, nil, false
+		}
+		if row, ok := m.tree.Focused(); ok && row.Expanded {
+			return m.setRowExpanded(row, false)
+		}
+		return m, nil, false
+	}
+	return m, nil, false
+}
+
+// setRowExpanded opens or closes a node and persists the new state.
+func (m *Model) setRowExpanded(row TreeRow, expanded bool) (tea.Model, tea.Cmd, bool) {
+	switch row.Kind {
+	case NodeSession:
+		m.config.SetSessionExpanded(row.Session, expanded)
+	case NodeWindow:
+		m.config.SetWindowExpanded(row.Session, row.Window, expanded)
+	default:
+		return m, nil, true
+	}
+	m.saveState()
+	m.rebuildTree()
+	return m, m.syncPreview(), true
+}
+
+// handleTreeReorder moves the focused row among its siblings.
+func (m *Model) handleTreeReorder(delta int) (tea.Model, tea.Cmd, bool) {
+	row, ok := m.tree.Focused()
+	if !ok {
+		return m, nil, true
+	}
+
+	switch row.Kind {
+	case NodeSession:
+		if m.config.Settings.SortBy != config.SortManual {
+			m.setStatusError("reorder needs sort: manual (press s)")
+			return m, nil, true
+		}
+		src := -1
+		for i, s := range m.sessions {
+			if s.Name == row.Session {
+				src = i
+				break
+			}
+		}
+		dst := src + delta
+		if src < 0 || dst < 0 || dst >= len(m.sessions) {
+			return m, nil, true
+		}
+		m.sessions[src], m.sessions[dst] = m.sessions[dst], m.sessions[src]
+		order := make([]string, len(m.sessions))
+		for i, s := range m.sessions {
+			order[i] = s.Name
+		}
+		m.config.SetSessionOrder(order)
+		m.saveState()
+		m.resetSessionItems()
+		m.applyFilter()
+		m.tree.FocusRowWhere(func(r TreeRow) bool {
+			return r.Kind == NodeSession && r.Session == row.Session
+		})
+		return m, m.syncPreview(), true
+
+	case NodeWindow:
+		windows := m.windowsOf(row.Session)
+		src := -1
+		for i, w := range windows {
+			if w.Index == row.Window {
+				src = i
+				break
+			}
+		}
+		dst := src + delta
+		if src < 0 || dst < 0 || dst >= len(windows) {
+			return m, nil, true
+		}
+		dstIndex := windows[dst].Index
+		if err := m.tmux.SwapWindow(row.Session, row.Window, dstIndex); err != nil {
+			m.setStatusError(err.Error())
+			return m, nil, true
+		}
+		// tmux is the source of truth for window order after a swap.
+		m.config.ClearWindowOrder(row.Session)
+		m.saveState()
+		_ = m.loadSessions()
+		m.applyFilter()
+		// The focused window now sits at the index it was swapped with.
+		m.tree.FocusRowWhere(func(r TreeRow) bool {
+			return r.Kind == NodeWindow && r.Session == row.Session && r.Window == dstIndex
+		})
+		return m, m.syncPreview(), true
+	}
+	return m, nil, true
 }

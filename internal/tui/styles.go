@@ -11,6 +11,7 @@ type Styles struct {
 	CardSubtle lipgloss.Style
 	CardAttached     lipgloss.Style
 	MarkBadge        lipgloss.Style
+	TreeWindow       lipgloss.Style
 
 	// Preview
 	PreviewBorder lipgloss.Style
@@ -63,6 +64,11 @@ func NewStyles() Styles {
 		MarkBadge: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("222")).
 			Bold(true),
+
+		// Window rows sit between the session title and the dim pane rows so
+		// the three tree levels stay apart without extra decoration.
+		TreeWindow: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("110")),
 
 		PreviewBorder: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).

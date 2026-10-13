@@ -8,10 +8,11 @@ import "time"
 type Service interface {
 	// Queries
 	IsInTmux() bool
+	CurrentSession() string
 	ListSessions() ([]Session, error)
 	ListWindows(sessionName string) ([]Window, error)
-	ListAllWindowNames() (map[string][]string, error)  // session -> window names
-	ListAllPaneCounts() (map[string]int, error)        // session -> total pane count
+	ListAllWindows() (map[string][]Window, error)     // session -> windows
+	ListAllPanes() (map[string]map[int][]Pane, error) // session -> window index -> panes
 	ListPanes(sessionName string, windowIndex int) ([]Pane, error)
 	CapturePane(sessionName string, windowIndex int, paneIndex int) (string, error)
 

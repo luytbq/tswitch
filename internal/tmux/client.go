@@ -71,6 +71,21 @@ func (c *Client) IsInTmux() bool {
 	return c.inTmux
 }
 
+// CurrentSession returns the session the calling client is attached to, or ""
+// when not running inside tmux. The session_attached flag cannot stand in for
+// this: several sessions can be attached at once by different clients.
+func (c *Client) CurrentSession() string {
+	if !c.inTmux {
+		return ""
+	}
+	if c.currentSession == "" {
+		if out, err := c.exec.Run("display-message", "-p", "#{session_name}"); err == nil {
+			c.currentSession = strings.TrimSpace(out)
+		}
+	}
+	return c.currentSession
+}
+
 // ---------------------------------------------------------------------------
 // Queries
 // ---------------------------------------------------------------------------
@@ -115,37 +130,62 @@ func (c *Client) ListWindows(sessionName string) ([]Window, error) {
 	return windows, nil
 }
 
-// ListAllWindowNames returns a map of session name -> window names by querying
-// all sessions at once with list-windows -a.
-func (c *Client) ListAllWindowNames() (map[string][]string, error) {
-	output, err := c.exec.Run("list-windows", "-a", "-F", "#{session_name}|#{window_name}")
+// ListAllWindows returns every window of every session, keyed by session name,
+// in one list-windows -a call. The tree view needs window data for sessions it
+// has not drilled into, so fetching per session would mean one call per row.
+func (c *Client) ListAllWindows() (map[string][]Window, error) {
+	output, err := c.exec.Run("list-windows", "-a", "-F",
+		"#{session_name}|#{window_index}|#{window_name}|#{window_panes}|#{window_active}|#{window_layout}|#{pane_current_path}|#{pane_current_command}|#{pane_pid}|#{pane_title}")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list all windows: %w", err)
 	}
 
-	result := make(map[string][]string)
+	result := make(map[string][]Window)
 	for _, line := range splitLines(output) {
-		parts := strings.Split(line, "|")
-		if len(parts) < 2 {
+		sessName, rest, ok := strings.Cut(line, "|")
+		if !ok {
 			continue
 		}
-		sessName, winName := parts[0], parts[1]
-		result[sessName] = append(result[sessName], winName)
+		w, err := parseWindowLine(rest)
+		if err != nil {
+			continue
+		}
+		result[sessName] = append(result[sessName], w)
 	}
 	return result, nil
 }
 
-func (c *Client) ListAllPaneCounts() (map[string]int, error) {
-	output, err := c.exec.Run("list-panes", "-a", "-F", "#{session_name}")
+// ListAllPanes returns every pane of every session in one list-panes -a call,
+// keyed by session name then window index.
+func (c *Client) ListAllPanes() (map[string]map[int][]Pane, error) {
+	output, err := c.exec.Run("list-panes", "-a", "-F",
+		"#{session_name}|#{window_index}|#{pane_index}|#{pane_active}|#{pane_width}|#{pane_height}|#{pane_current_command}|#{pane_current_path}|#{pane_pid}|#{pane_title}")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list all panes: %w", err)
 	}
 
-	result := make(map[string]int)
+	result := make(map[string]map[int][]Pane)
 	for _, line := range splitLines(output) {
-		if line != "" {
-			result[line]++
+		sessName, rest, ok := strings.Cut(line, "|")
+		if !ok {
+			continue
 		}
+		winField, paneFields, ok := strings.Cut(rest, "|")
+		if !ok {
+			continue
+		}
+		var winIdx int
+		if _, err := fmt.Sscanf(winField, "%d", &winIdx); err != nil {
+			continue
+		}
+		p, err := parsePaneLine(paneFields)
+		if err != nil {
+			continue
+		}
+		if result[sessName] == nil {
+			result[sessName] = make(map[int][]Pane)
+		}
+		result[sessName][winIdx] = append(result[sessName][winIdx], p)
 	}
 	return result, nil
 }
@@ -172,8 +212,10 @@ func (c *Client) ListPanes(sessionName string, windowIndex int) ([]Pane, error) 
 func (c *Client) CapturePane(sessionName string, windowIndex int, paneIndex int) (string, error) {
 	var target string
 	if windowIndex < 0 {
-		// Capture the active window/pane of the session.
-		target = sessionTarget(sessionName)
+		// Capture the active pane of the session. The trailing colon is what
+		// makes tmux read an exact-match session name as a pane target; without
+		// it capture-pane reports "can't find pane: =name".
+		target = sessionTarget(sessionName) + ":"
 	} else {
 		target = fmt.Sprintf("%s:%d.%d", sessionTarget(sessionName), windowIndex, paneIndex)
 	}

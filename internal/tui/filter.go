@@ -66,3 +66,50 @@ func FilterWindows(windows []tmux.Window, term string) []tmux.Window {
 	}
 	return out
 }
+
+// FilterTree narrows the session list for the tree view. A session is kept when
+// its own name matches, or when one of its window names does. In the second
+// case the returned map lists which windows hit, so the tree can show only
+// those; a session matched by its own name has no entry and keeps all windows.
+func FilterTree(sessions []tmux.Session, windows map[string][]tmux.Window, term string) ([]tmux.Session, map[string]map[int]bool) {
+	if term == "" {
+		return sessions, nil
+	}
+
+	names := make([]string, len(sessions))
+	for i, s := range sessions {
+		names[i] = s.Name
+	}
+	sessionHit := make(map[string]bool)
+	for _, match := range fuzzy.Find(term, names) {
+		sessionHit[sessions[match.Index].Name] = true
+	}
+
+	windowHit := make(map[string]map[int]bool)
+	for _, s := range sessions {
+		if sessionHit[s.Name] {
+			continue
+		}
+		sessionWindows := windows[s.Name]
+		windowNames := make([]string, len(sessionWindows))
+		for i, w := range sessionWindows {
+			windowNames[i] = w.Name
+		}
+		for _, match := range fuzzy.Find(term, windowNames) {
+			if windowHit[s.Name] == nil {
+				windowHit[s.Name] = make(map[int]bool)
+			}
+			windowHit[s.Name][sessionWindows[match.Index].Index] = true
+		}
+	}
+
+	// Keep the display order rather than the fuzzy score, so rows do not jump
+	// around under the cursor as the query is typed.
+	out := make([]tmux.Session, 0, len(sessions))
+	for _, s := range sessions {
+		if sessionHit[s.Name] || len(windowHit[s.Name]) > 0 {
+			out = append(out, s)
+		}
+	}
+	return out, windowHit
+}

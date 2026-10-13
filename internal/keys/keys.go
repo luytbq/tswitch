@@ -39,6 +39,8 @@ const (
 	ActionBrowseDirs // f
 
 	// UI
+	ActionToggleView    // v - grid <-> list
+	ActionCycleSort     // s - cycle session sort mode
 	ActionTogglePreview // tab
 	ActionToggleHelp    // ?
 	ActionFilter        // /
@@ -54,6 +56,7 @@ var reservedKeys = map[string]bool{
 	"?": true, "q": true, "m": true, "/": true,
 	"f": true, "o": true,
 	"n": true, "r": true, "d": true, "x": true, "p": true, "t": true,
+	"v": true, "s": true,
 	"H": true, "J": true, "K": true, "L": true,
 }
 
@@ -81,6 +84,9 @@ var defaultKeymap = map[string]Action{
 	"x": ActionCut,
 	"p": ActionPaste,
 	"t": ActionTag,
+
+	"v": ActionToggleView,
+	"s": ActionCycleSort,
 
 	"tab": ActionTogglePreview,
 	"?":   ActionToggleHelp,
@@ -110,6 +116,8 @@ var actionToName = map[Action]string{
 	ActionReorderLeft:    "reorder_left",
 	ActionReorderRight:   "reorder_right",
 	ActionBrowseDirs:    "browse_dirs",
+	ActionToggleView:     "toggle_view",
+	ActionCycleSort:      "cycle_sort",
 	ActionTogglePreview:  "toggle_preview",
 	ActionToggleHelp:     "toggle_help",
 	ActionFilter:         "filter",
