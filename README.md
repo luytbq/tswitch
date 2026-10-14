@@ -8,7 +8,7 @@ A grid-based TUI for browsing and switching tmux sessions and windows.
 - **Three-level navigation** — browse sessions, drill into windows, drill into panes
 - **Fuzzy search** — filter sessions and windows by name
 - **Marks** — bookmark sessions/windows with single-key hotkeys for instant switching
-- **Preview panel** — toggle between pane capture and session/window metadata
+- **Preview panel** — toggle between pane capture and session/window metadata; the capture view refreshes itself once a second
 - **Reorder** — rearrange sessions and windows with Shift+H/J/K/L, persisted across runs
 - **Session management** — create, rename, and kill sessions and windows
 - **Custom key bindings** — override default keys via JSON config
@@ -129,6 +129,8 @@ The first file found wins; if neither exists, tswitch runs with defaults (no cus
 A complete reference config listing every supported key binding, `browse_dirs`, and `browse_exclude` is checked into the repo at [`tswitch-config.json`](./tswitch-config.json) — use it as a starting template. Save it to `~/.tswitch/tswitch-config.json` and it will be picked up by any `tswitch` binary on your system.
 
 **`keys`** — override default key bindings. Action names: `move_up`, `move_down`, `move_left`, `move_right`, `confirm`, `quick_swap`, `direct_switch`, `back`, `start_mark`, `new`, `rename`, `kill`, `cut`, `paste`, `tag`, `reorder_up`, `reorder_down`, `reorder_left`, `reorder_right`, `toggle_view`, `cycle_sort`, `toggle_preview`, `toggle_help`, `filter`, `quit`, `browse_dirs`.
+
+**`ui.preview_refresh_ms`** — how often the preview refetches the focused pane, in milliseconds (default: `1000`). Set it to `0` to turn the live refresh off and go back to refreshing only when the cursor moves. Values below `100` are raised to `100`, since every refresh runs one `tmux capture-pane`. Only the capture preview refreshes; metadata holds still, and nothing is fetched while a dialog or the help screen covers the panel.
 
 **`ui.card_min_width`** — minimum card content width in characters (default: `16`). Increase this to fit longer session/window names without truncation; for example, `20` is a good value if your names regularly exceed 11–12 characters. Wider cards mean fewer columns on the same terminal width.
 

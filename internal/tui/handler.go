@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luytbq/tswitch/internal/config"
@@ -504,9 +505,12 @@ func (m *Model) handleJumpToMark(keyStr string) (tea.Model, tea.Cmd) {
 // the pane capture asynchronously; in metadata mode it updates synchronously
 // and returns nil.
 func (m *Model) syncPreview() tea.Cmd {
+	// Any result still in flight belongs to the item the cursor just left.
+	m.previewGen++
+
 	if m.previewPanel.IsCapture() {
 		m.previewPanel.SetCaptureContent("") // clear stale content
-		return m.fetchCapture()
+		return m.fetchCapture(false)
 	}
 
 	target := m.focusedTarget()
@@ -530,9 +534,33 @@ func (m *Model) syncPreview() tea.Cmd {
 	return nil
 }
 
+// previewTick schedules the next live refresh of the capture preview.
+func (m *Model) previewTick() tea.Cmd {
+	if m.previewInterval <= 0 {
+		return nil
+	}
+	return tea.Tick(m.previewInterval, func(time.Time) tea.Msg {
+		return previewTickMsg{}
+	})
+}
+
+// refreshCapture refetches the focused pane for the live preview. Unlike
+// syncPreview it leaves the panel showing the previous content, so the box does
+// not blink empty between two refreshes.
+func (m *Model) refreshCapture() tea.Cmd {
+	if !m.previewPanel.IsCapture() {
+		return nil // metadata holds still; refetching it every tick buys nothing
+	}
+	if m.dialog != nil || m.helpShown {
+		return nil // the panel is covered, so nobody would see the result
+	}
+	return m.fetchCapture(true)
+}
+
 // fetchCapture returns a Cmd that runs tmux capture-pane for the focused item
-// in a goroutine and delivers the result as a captureResultMsg.
-func (m *Model) fetchCapture() tea.Cmd {
+// in a goroutine and delivers the result as a captureResultMsg. periodic marks
+// the timer-driven refreshes, which must not report transient errors.
+func (m *Model) fetchCapture(periodic bool) tea.Cmd {
 	target := m.focusedTarget()
 	if !target.ok {
 		return nil
@@ -544,11 +572,17 @@ func (m *Model) fetchCapture() tea.Cmd {
 	if paneIdx < 0 {
 		paneIdx = 0
 	}
+	gen := m.previewGen
 
 	return func() tea.Msg {
 		content, err := m.tmux.CapturePane(sessName, winIdx, paneIdx)
 		if err != nil {
-			return captureResultMsg{"(capture error: " + err.Error() + ")"}
+			if periodic {
+				// A pane that died between two ticks would otherwise flash an
+				// error line once a second.
+				return captureResultMsg{gen: gen, periodic: true}
+			}
+			return captureResultMsg{gen: gen, content: "(capture error: " + err.Error() + ")"}
 		}
 		// tmux pads every line with spaces to the full pane width and may
 		// include \r; strip both so the preview box doesn't overflow.
@@ -557,7 +591,7 @@ func (m *Model) fetchCapture() tea.Cmd {
 		for i, l := range rawLines {
 			rawLines[i] = strings.TrimRight(l, " ")
 		}
-		return captureResultMsg{strings.Join(rawLines, "\n")}
+		return captureResultMsg{gen: gen, content: strings.Join(rawLines, "\n"), periodic: periodic}
 	}
 }
 

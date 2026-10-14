@@ -47,6 +47,8 @@ Two separate config files with distinct roles:
 - **`~/.tswitch/state.yaml`** (`config.go`) — runtime state: marks, session/window ordering, tags, tree fold state (`expanded`), and the last-used view, sort and preview modes. Auto-managed; users rarely edit by hand.
 - **`~/.tswitch/tswitch-config.json`** (`appconfig.go`) — read-only user preferences: key overrides (`keys`), browse directories (`browse_dirs`/`browse_exclude`), and UI settings (`ui.card_min_width`). Also searched next to the binary. Loaded once at startup via `LoadAppConfig()`; never written back.
 
+`ui.preview_refresh_ms` (default 1000, `0` disables, floor 100) sets the capture preview's live refresh period.
+
 `ui.card_min_width` (default 16) controls the minimum card content width. Increase it to fit longer session names — wider cards mean fewer columns.
 
 `settings.pin_current_first` (default true) is the only setting with no key bound to it; it lives in `state.yaml` rather than the JSON config because it sits beside the sort mode it modifies.
@@ -63,7 +65,7 @@ Two separate config files with distinct roles:
 - `cards.go` — `SessionCard`, `WindowCard`, and `PaneCard` implement the `GridItem` interface for polymorphic display
 - `tree.go` — The list view widget: a flat slice of `TreeRow` rendered as an indented, scrollable list. Each row carries its own identity (`TreeRow.Key()`), used for mark lookup and for holding focus across rebuilds.
 - `treebuild.go` — Builds the visible rows from the session list, the active filter and the saved fold state. Rows are rebuilt from scratch on every change rather than mutated.
-- `preview.go` — Side panel with two modes, cycled by Tab: `PreviewCapture` (live pane content via `tmux capture-pane`) and `PreviewMetadata` (session/window info). Mode persists in `state.yaml`. Layout split: session view is 60% grid / 40% preview; window/pane view is 50/50.
+- `preview.go` — Side panel with two modes, cycled by Tab: `PreviewCapture` (live pane content via `tmux capture-pane`) and `PreviewMetadata` (session/window info). Mode persists in `state.yaml`. In capture mode a `previewTickMsg` timer refetches the focused pane every `ui.preview_refresh_ms`; exactly one tick is ever in flight because each one reschedules itself on arrival. Captures run off the update loop, so every `captureResultMsg` carries the `previewGen` it was issued under and a result from a focus the cursor has already left is dropped instead of painted over the new one. The timer path does not clear the panel first (that would blink it empty once a second) and swallows capture errors, so a pane that dies between ticks leaves the last good content on screen. Layout split: session view is 60% grid / 40% preview; window/pane view is 50/50.
 - `filter.go` — Fuzzy search filtering via `github.com/sahilm/fuzzy`
 - `dialog.go` — Modal confirm/input overlays (e.g. rename, kill-session confirmation)
 - `browse.go` — `tea.ExecProcess`-based fzf browser over `appConfig.BrowseDirs` for creating/attaching sessions rooted in a chosen directory. Also exposed as `tswitch browse` non-TUI subcommand via `main.go`.

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // BrowseDir defines a directory to scan for subdirectories when browsing.
@@ -15,6 +16,34 @@ type BrowseDir struct {
 // UIConfig holds visual/layout preferences.
 type UIConfig struct {
 	CardMinWidth int `json:"card_min_width"` // minimum card content width; 0 = use built-in default
+
+	// PreviewRefreshMs is how often the capture preview refetches. A pointer
+	// so that an explicit 0 (turn the refresh off) stays distinct from the
+	// field being absent.
+	PreviewRefreshMs *int `json:"preview_refresh_ms"`
+}
+
+const (
+	defaultPreviewRefreshMs = 1000
+	// Every refresh forks a tmux process, so a config asking for a 5ms period
+	// would spend the whole terminal on capture-pane.
+	minPreviewRefreshMs = 100
+)
+
+// PreviewRefresh returns the capture refresh period, or 0 when the live
+// refresh is off.
+func (c *AppConfig) PreviewRefresh() time.Duration {
+	ms := defaultPreviewRefreshMs
+	if c.UI.PreviewRefreshMs != nil {
+		ms = *c.UI.PreviewRefreshMs
+	}
+	if ms <= 0 {
+		return 0
+	}
+	if ms < minPreviewRefreshMs {
+		ms = minPreviewRefreshMs
+	}
+	return time.Duration(ms) * time.Millisecond
 }
 
 // AppConfig holds read-only application settings loaded from tswitch-config.json.

@@ -43,6 +43,7 @@
     "vendor"
   ],
   "ui": {
-    "card_min_width": 20
+    "card_min_width": 20,
+    "preview_refresh_ms": 1000
   }
 }

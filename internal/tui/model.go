@@ -51,22 +51,26 @@ type Model struct {
 	sessions         []tmux.Session
 	windows          []tmux.Window
 	panes            []tmux.Pane
-	currentSess      string // session name when in window view
-	currentWin       int    // window index when in pane view
+	currentSess      string              // session name when in window view
+	currentWin       int                 // window index when in pane view
 	windowsBySession map[string][]string // session -> window names (for search)
 	allWindows       map[string][]tmux.Window
 	allPanes         map[string]map[int][]tmux.Pane
 	clientSess       string // session this tmux client is attached to
 	viewMode         string // config.ViewGrid | config.ViewList
-	helpShown     bool
-	markingMode   bool        // waiting for a mark-key press
-	markingTarget focusTarget // item the pending mark will point at
-	filterMode    bool   // search input is active
-	filterQuery   string // current fuzzy-search term
-	dialog        *Dialog
-	pendingAction dialogAction
-	pendingTarget focusTarget // item the open dialog acts on
-	clipboard     *clipboard
+	helpShown        bool
+	markingMode      bool        // waiting for a mark-key press
+	markingTarget    focusTarget // item the pending mark will point at
+	filterMode       bool        // search input is active
+	filterQuery      string      // current fuzzy-search term
+	dialog           *Dialog
+	pendingAction    dialogAction
+	pendingTarget    focusTarget // item the open dialog acts on
+	clipboard        *clipboard
+
+	// Live preview.
+	previewInterval time.Duration // 0 disables the periodic refetch
+	previewGen      int           // bumped on every focus change; see captureResultMsg
 
 	// Viewport.
 	width  int
@@ -95,15 +99,16 @@ func NewModelWith(svc tmux.Service, appCfg *config.AppConfig) (*Model, error) {
 
 	styles := NewStyles()
 	m := &Model{
-		tmux:           svc,
-		config:         cfg,
-		appConfig:      appCfg,
-		styles:         styles,
-		width:          80,
-		height:         24,
-		currentMode:    ModeSessionGrid,
-		viewMode:       cfg.Settings.ViewMode,
-		clientSess:     svc.CurrentSession(),
+		tmux:            svc,
+		config:          cfg,
+		appConfig:       appCfg,
+		styles:          styles,
+		width:           80,
+		height:          24,
+		currentMode:     ModeSessionGrid,
+		viewMode:        cfg.Settings.ViewMode,
+		clientSess:      svc.CurrentSession(),
+		previewInterval: appCfg.PreviewRefresh(),
 	}
 
 	gridW, gridH, previewW, previewH := m.layoutSizes()
@@ -129,8 +134,21 @@ func NewModelWith(svc tmux.Service, appCfg *config.AppConfig) (*Model, error) {
 	return m, nil
 }
 
-// captureResultMsg carries the output of an async pane capture.
-type captureResultMsg struct{ content string }
+// captureResultMsg carries the output of an async pane capture. The capture
+// runs off the update loop, so a result can arrive after the cursor has already
+// moved on; gen identifies the focus the request was issued for and anything
+// older than the current focus is dropped rather than painted over it.
+type captureResultMsg struct {
+	gen     int
+	content string
+	// periodic marks a refresh nobody asked for, which keeps the last good
+	// content instead of replacing the panel with an error line.
+	periodic bool
+}
+
+// previewTickMsg drives the live preview. Exactly one tick is ever in flight:
+// each one is rescheduled when it arrives.
+type previewTickMsg struct{}
 
 // fzfResultMsg carries the result of the fzf directory browser.
 type fzfResultMsg struct {
@@ -140,7 +158,7 @@ type fzfResultMsg struct {
 
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
-	return m.syncPreview()
+	return tea.Batch(m.syncPreview(), m.previewTick())
 }
 
 // Update implements tea.Model. It dispatches to focused handlers.
@@ -151,7 +169,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.resize(msg.Width, msg.Height)
 	case captureResultMsg:
+		if msg.gen != m.previewGen {
+			return m, nil // issued for an item the cursor has since left
+		}
+		if msg.periodic && msg.content == "" {
+			return m, nil
+		}
 		m.previewPanel.SetCaptureContent(msg.content)
+
+	case previewTickMsg:
+		return m, tea.Batch(m.refreshCapture(), m.previewTick())
 	case fzfResultMsg:
 		return m.handleFzfResult(msg)
 	}
@@ -735,7 +762,6 @@ func (m *Model) activeGrid() *Grid {
 		return m.sessionGrid
 	}
 }
-
 
 // ---------------------------------------------------------------------------
 // Focus target
