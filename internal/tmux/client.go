@@ -379,11 +379,13 @@ func parseSessionLine(line string) (Session, error) {
 	s := Session{
 		Name:        parts[0],
 		WindowCount: windowCount,
-		Attached:    parts[2] == "1",
-		Created:     parseUnixTime(parts[3]),
-		LastActive:  parseUnixTime(parts[4]),
-		Width:       width,
-		Height:      height,
+		// session_attached is a client count, not a flag: a session opened in
+		// two terminals reports "2".
+		Attached:   parts[2] != "" && parts[2] != "0",
+		Created:    parseUnixTime(parts[3]),
+		LastActive: parseUnixTime(parts[4]),
+		Width:      width,
+		Height:     height,
 	}
 	if len(parts) >= 11 {
 		s.ActivePaneDir = parts[7]
