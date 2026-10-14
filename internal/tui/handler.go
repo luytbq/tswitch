@@ -280,8 +280,6 @@ func (m *Model) handleBack() (tea.Model, tea.Cmd) {
 	case m.markingMode:
 		m.markingMode = false
 		m.setStatus("")
-	case m.helpShown:
-		m.helpShown = false
 	case m.currentMode == ModePaneGrid:
 		m.resetFilter()
 		m.currentMode = ModeWindowGrid
@@ -909,9 +907,6 @@ func (m *Model) handleTreeAction(action keys.Action) (tea.Model, tea.Cmd, bool) 
 		return m.handleTreeReorder(1)
 
 	case keys.ActionBack:
-		if m.markingMode || m.helpShown {
-			return m, nil, false
-		}
 		if row, ok := m.tree.Focused(); ok && row.Expanded {
 			return m.setRowExpanded(row, false)
 		}

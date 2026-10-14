@@ -85,14 +85,14 @@ Reload with `tmux source-file ~/.tmux.conf`. Requires tmux 3.2+ for `display-pop
 | `m` + key | Mark current item with a hotkey |
 | _mark key_ | Jump to marked session/window |
 | `/` | Fuzzy search filter |
-| `Tab` | Toggle preview panel |
+| `Tab` | Switch the preview between pane capture and metadata |
 | `n` | New session or window |
 | `r` | Rename focused item |
 | `d` | Kill focused item (with confirmation) |
 | `x` | Cut focused window/pane to clipboard |
 | `p` | Paste clipboard onto focused destination |
-| `t` | Tag focused session |
-| `?` | Help overlay |
+| `t` | Reserved for tagging; no action bound yet |
+| `?` | Key reference overlay (`?` or `Esc` closes it) |
 | `q` | Quit |
 
 ## Views

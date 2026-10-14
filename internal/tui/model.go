@@ -206,6 +206,19 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	action := keys.Resolve(keyStr)
 
+	// The help screen covers the whole terminal, so anything that would move
+	// focus or mutate a session happens out of sight. Only the keys that leave
+	// it are live.
+	if m.helpShown {
+		switch action {
+		case keys.ActionToggleHelp, keys.ActionBack:
+			m.helpShown = false
+		case keys.ActionQuit:
+			return m, tea.Quit
+		}
+		return m, nil
+	}
+
 	// The tree redefines navigation, folding and reordering; everything it
 	// leaves alone falls through to the handlers shared with the grid.
 	if m.isListView() {

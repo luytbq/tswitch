@@ -90,60 +90,108 @@ func (m *Model) renderPaneView() string {
 	return m.renderLayout(header, separator, m.paneGrid.Render(), m.previewPanel.Render())
 }
 
-func (m *Model) renderHelp() string {
-	s := m.styles
-	var b strings.Builder
-
-	b.WriteString(s.HeaderStyle.Render("TSWITCH - TMUX Session Navigator"))
-	b.WriteString("\n\n")
-
-	// Navigation
-	b.WriteString(s.HelpSection.Render("Navigation"))
-	b.WriteString("\n")
-	writeHelpLine(&b, s, "h/j/k/l, arrows", "Move between items")
-	writeHelpLine(&b, s, "o", "Grid: drill in · List: fold/unfold")
-	writeHelpLine(&b, s, "enter, space", "Switch to focused item")
-	writeHelpLine(&b, s, "esc", "Go back / Fold / Quit")
-
-	b.WriteString("\n")
-	b.WriteString(s.HelpSection.Render("View"))
-	b.WriteString("\n")
-	writeHelpLine(&b, s, "v", "Toggle card grid / tree list")
-	writeHelpLine(&b, s, "s", "Cycle sort: recent, name, manual")
-	writeHelpLine(&b, s, "H/L", "List: fold / unfold all sessions")
-
-	b.WriteString("\n")
-	b.WriteString(s.HelpSection.Render("Marks"))
-	b.WriteString("\n")
-	writeHelpLine(&b, s, "m + key", "Mark focused item with a key")
-	writeHelpLine(&b, s, "key", "Jump to marked session/window")
-
-	b.WriteString("\n")
-	b.WriteString(s.HelpSection.Render("Management"))
-	b.WriteString("\n")
-	writeHelpLine(&b, s, "n", "New session / window")
-	writeHelpLine(&b, s, "r", "Rename session / window")
-	writeHelpLine(&b, s, "d", "Kill session / window")
-	writeHelpLine(&b, s, "x", "Cut window/pane (toggle to clear)")
-	writeHelpLine(&b, s, "p", "Paste cut window/pane onto focus")
-	writeHelpLine(&b, s, "H/J/K/L", "Reorder items (sort: manual)")
-	writeHelpLine(&b, s, "f", "Browse dirs (fzf)")
-
-	b.WriteString("\n")
-	b.WriteString(s.HelpSection.Render("Search & UI"))
-	b.WriteString("\n")
-	writeHelpLine(&b, s, "/", "Search (fuzzy filter)")
-	writeHelpLine(&b, s, "tab", "Toggle preview mode")
-	writeHelpLine(&b, s, "?", "Toggle this help")
-	writeHelpLine(&b, s, "q", "Quit")
-
-	return lipgloss.NewStyle().Padding(1, 2).Render(b.String())
+type helpEntry struct {
+	key  string
+	desc string
 }
 
-func writeHelpLine(b *strings.Builder, s Styles, key, desc string) {
-	k := s.HelpKey.Render(fmt.Sprintf("  %-18s", key))
-	d := s.HelpDesc.Render(desc)
-	b.WriteString(k + d + "\n")
+type helpSection struct {
+	title   string
+	entries []helpEntry
+}
+
+// renderHelp draws the key reference in two columns. One column per section
+// would be taller than a popup-sized terminal, and anything past the last
+// visible row is dropped by the renderer rather than scrolled back to.
+func (m *Model) renderHelp() string {
+	s := m.styles
+
+	left := []helpSection{
+		{"Navigation", []helpEntry{
+			{"hjkl, arrows", "Move focus"},
+			{"o", "Drill in / fold node"},
+			{"enter, space", "Switch to focused item"},
+			{"esc", "Back / fold / quit"},
+		}},
+		{"Management", []helpEntry{
+			{"n", "New session or window"},
+			{"r", "Rename"},
+			{"d", "Kill"},
+			{"x", "Cut window or pane"},
+			{"p", "Paste onto focus"},
+			{"HJKL", "Reorder (sort: manual)"},
+			{"f", "Browse dirs (fzf)"},
+		}},
+	}
+
+	right := []helpSection{
+		{"View", []helpEntry{
+			{"v", "Card grid / tree list"},
+			{"s", "Sort: recent, name, manual"},
+			{"h/l", "List: fold / unfold node"},
+			{"H/L", "List: fold / unfold all"},
+			{"tab", "Preview: capture / metadata"},
+		}},
+		{"Marks", []helpEntry{
+			{"m + key", "Mark focused item"},
+			{"key", "Jump to mark"},
+		}},
+		{"Search & UI", []helpEntry{
+			{"/", "Fuzzy search"},
+			{"?", "This help"},
+			{"q", "Quit"},
+		}},
+	}
+
+	inner := m.width - 4 // the Padding(1, 2) below eats two columns per side
+	colW := (inner - 3) / 2
+
+	var body string
+	if colW >= 32 {
+		lcol := lipgloss.NewStyle().Width(colW + 3).Render(renderHelpColumn(s, left, colW))
+		body = lipgloss.JoinHorizontal(lipgloss.Top, lcol, renderHelpColumn(s, right, colW))
+	} else {
+		body = renderHelpColumn(s, append(append([]helpSection{}, left...), right...), inner)
+	}
+
+	out := lipgloss.NewStyle().Padding(1, 2).Render(
+		s.HeaderStyle.Render("TSWITCH - TMUX Session Navigator") + "\n\n" +
+			body + "\n\n" +
+			s.StatusHints.Render("? or esc to close"))
+
+	lines := strings.Split(out, "\n")
+	if len(lines) > m.height {
+		lines = lines[:m.height]
+	}
+	return strings.Join(lines, "\n")
+}
+
+// renderHelpColumn stacks sections into one column, aligning every description
+// to the widest key in that column.
+func renderHelpColumn(s Styles, sections []helpSection, width int) string {
+	keyW := 0
+	for _, sec := range sections {
+		for _, e := range sec.entries {
+			if n := lipgloss.Width(e.key); n > keyW {
+				keyW = n
+			}
+		}
+	}
+	descW := width - keyW - 4
+
+	var b strings.Builder
+	for i, sec := range sections {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(s.HelpSection.Render(sec.title))
+		b.WriteString("\n")
+		for _, e := range sec.entries {
+			k := s.HelpKey.Render(fmt.Sprintf("  %-*s", keyW, e.key))
+			b.WriteString(k + "  " + s.HelpDesc.Render(truncate(e.desc, descW)) + "\n")
+		}
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // ---------------------------------------------------------------------------
@@ -200,19 +248,19 @@ func (m *Model) renderStatusBar() string {
 	var modeLabel, hints string
 	if m.isListView() {
 		modeLabel = s.StatusMode.Render("TREE")
-		hints = " jk:nav  hl:fold  o:fold/switch  enter:switch  JK:move  HL:fold all  s:sort  v:grid  /:search  n:new  r:rename  d:kill  x:cut  p:paste  m:mark  ?:help  q:quit"
+		hints = " ?:help  jk:nav  hl:fold  o:fold/switch  enter:switch  JK:move  HL:fold all  s:sort  v:grid  /:search  n:new  r:rename  d:kill  x:cut  p:paste  m:mark  q:quit"
 		return m.statusLine(modeLabel, hints)
 	}
 	switch m.currentMode {
 	case ModeSessionGrid:
 		modeLabel = s.StatusMode.Render("SESSIONS")
-		hints = " hjkl/HJKL:nav/reorder  o:open  enter/space:switch  tab:preview  /:search  n:new  r:rename  d:kill  p:paste  m:mark  f:browse  ?:help  q:quit"
+		hints = " ?:help  hjkl/HJKL:nav/reorder  o:open  enter/space:switch  v:list  s:sort  tab:preview  /:search  n:new  r:rename  d:kill  p:paste  m:mark  f:browse  q:quit"
 	case ModeWindowGrid:
 		modeLabel = s.StatusMode.Render("WINDOWS")
-		hints = " hjkl/HJKL:nav/reorder  o:open  enter/space:switch  tab:preview  /:search  n:new  r:rename  d:kill  x:cut  p:paste  m:mark  esc:back  ?:help  q:quit"
+		hints = " ?:help  hjkl/HJKL:nav/reorder  o:open  enter/space:switch  tab:preview  /:search  n:new  r:rename  d:kill  x:cut  p:paste  m:mark  esc:back  q:quit"
 	case ModePaneGrid:
 		modeLabel = s.StatusMode.Render("PANES")
-		hints = " hjkl/HJKL:nav/reorder  enter/space:switch  tab:preview  /:search  x:cut  p:paste  m:mark  esc:back  ?:help  q:quit"
+		hints = " ?:help  hjkl/HJKL:nav/reorder  enter/space:switch  tab:preview  /:search  x:cut  p:paste  m:mark  esc:back  q:quit"
 	}
 	return m.statusLine(modeLabel, hints)
 }

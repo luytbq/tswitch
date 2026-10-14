@@ -59,11 +59,11 @@ Two separate config files with distinct roles:
 - `model.go` — Central state: current mode, sessions/windows/panes lists, focus index, search query, preview visibility, active dialog, pending cut clipboard
 - `handler.go` — Maps key input (`keys.Action`) to state mutations and TMUX commands. Also owns cross-session move via `handleCut`/`handlePaste` (clipboard persists across mode changes).
 - `grid.go` — Responsive grid layout; calculates columns dynamically from terminal width. Minimum card content width is controlled by `minCardContentW` const (16) or `appConfig.UI.CardMinWidth` if set. Manages focus navigation (flat index ↔ row/col conversion).
-- `view.go` — Top-level rendering, assembles grid + preview panel + dialog overlay + clipboard banner
+- `view.go` — Top-level rendering, assembles grid + preview panel + dialog overlay + clipboard banner. `renderHelp` lays the key reference out in two columns and clamps it to the terminal height: Bubbletea's inline renderer discards whatever overflows the last row instead of letting the terminal scroll it, so a taller help screen loses its top silently. `statusLine` cuts the key hints from the right, which is why `?:help` sits at the front of every hint string.
 - `cards.go` — `SessionCard`, `WindowCard`, and `PaneCard` implement the `GridItem` interface for polymorphic display
 - `tree.go` — The list view widget: a flat slice of `TreeRow` rendered as an indented, scrollable list. Each row carries its own identity (`TreeRow.Key()`), used for mark lookup and for holding focus across rebuilds.
 - `treebuild.go` — Builds the visible rows from the session list, the active filter and the saved fold state. Rows are rebuilt from scratch on every change rather than mutated.
-- `preview.go` — Toggleable side panel (Tab key) with two modes: `PreviewCapture` (live pane content via `tmux capture-pane`) and `PreviewMetadata` (session/window info). Mode persists in `state.yaml`. Layout split: session view is 60% grid / 40% preview; window/pane view is 50/50.
+- `preview.go` — Side panel with two modes, cycled by Tab: `PreviewCapture` (live pane content via `tmux capture-pane`) and `PreviewMetadata` (session/window info). Mode persists in `state.yaml`. Layout split: session view is 60% grid / 40% preview; window/pane view is 50/50.
 - `filter.go` — Fuzzy search filtering via `github.com/sahilm/fuzzy`
 - `dialog.go` — Modal confirm/input overlays (e.g. rename, kill-session confirmation)
 - `browse.go` — `tea.ExecProcess`-based fzf browser over `appConfig.BrowseDirs` for creating/attaching sessions rooted in a chosen directory. Also exposed as `tswitch browse` non-TUI subcommand via `main.go`.
