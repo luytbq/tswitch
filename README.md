@@ -145,6 +145,21 @@ Auto-managed by tswitch. Stores marks, session/window ordering, tags, the fold s
 
 `settings.pin_current_first` is the one knob with no key bound to it: set it to `false` to stop pinning the current session to the top of the list.
 
+## Releasing
+
+Go has no package registry to submit to. Publishing a version means pushing a semver git tag to the public repo: the first time anyone asks for it, `proxy.golang.org` fetches that tag from GitHub and stores it forever, and `pkg.go.dev` builds its page from the proxy afterwards.
+
+```bash
+scripts/go-release.sh patch              # v0.4.1 -> v0.4.2
+scripts/go-release.sh minor "message"    # v0.4.1 -> v0.5.0
+scripts/go-release.sh v1.0.0
+scripts/go-release.sh patch --dry-run    # run every check, tag nothing
+```
+
+The script refuses to tag unless tracked files are committed, the branch is level with its upstream (the proxy fetches from the remote, so an unpushed commit cannot be released), `go build` and `go vet` pass, and `go.mod`/`go.sum` are tidy. A tag is permanent once the proxy has served it, which is why the checks run first. After pushing the tag it asks the proxy for the new version and installs it from there, so a release is proven to work before the script reports success.
+
+`scripts/tag-release.sh` is the older, narrower script: it only tags and pushes.
+
 ## Troubleshooting
 
 **No sessions found** — make sure tmux is running (`tmux list-sessions`).

@@ -24,6 +24,14 @@ go mod tidy
 
 There is no automated test suite — testing is done manually by running the app against live TMUX sessions.
 
+## Releasing
+
+`scripts/go-release.sh <vX.Y.Z|patch|minor|major>` is the whole release path: it gates on a clean tree, a branch level with its upstream, `go build`, `go vet` and a tidy `go.mod`/`go.sum`, then tags, pushes, pulls the version through `proxy.golang.org` and installs it from there to prove the release works. `--dry-run` runs every check and tags nothing.
+
+The checks are front-loaded because a tag the proxy has served is permanent: it cannot be amended or withdrawn, only superseded by a higher version. Pushing the branch first is not optional either, since the proxy fetches the tag from the remote, not from the working copy.
+
+`scripts/tag-release.sh` predates it and only tags and pushes.
+
 ## Subcommands
 
 | Command | Description |
