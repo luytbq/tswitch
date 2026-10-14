@@ -1,41 +1,41 @@
 # tswitch
 
-A grid-based TUI for browsing and switching tmux sessions and windows.
+A TUI for browsing and switching tmux sessions, windows and panes. It replaces the default tmux chooser with a view that stays usable when you have forty sessions open.
 
 ## Features
 
-- **Grid layout** — responsive card grid that auto-fits columns to terminal width
-- **Three-level navigation** — browse sessions, drill into windows, drill into panes
-- **Fuzzy search** — filter sessions and windows by name
-- **Marks** — bookmark sessions/windows with single-key hotkeys for instant switching
-- **Preview panel** — toggle between pane capture and session/window metadata; the capture view refreshes itself once a second
-- **Reorder** — rearrange sessions and windows with Shift+H/J/K/L, persisted across runs
-- **Session management** — create, rename, and kill sessions and windows
-- **Custom key bindings** — override default keys via JSON config
-- **`tswitch last`** — switch to the previous tmux session from the command line
+- Two views, switchable with one key: a card grid, or a folding tree that puts sessions, windows and panes on one screen
+- Live preview of the focused pane, refreshed once a second
+- Fuzzy search across session and window names
+- Marks: pin anything to a single key and jump straight to it
+- Sort by most recent, by name, or in an order you arrange by hand
+- Create, rename and kill sessions and windows without leaving the switcher
+- Move a window to another session, or a pane into another window
+- Open any directory as a session through an fzf browser
 
-## Installation
+## Requirements
 
-### Prerequisites
+- tmux 3.0 or newer, 3.2 or newer for popup support
+- Go 1.24 or newer, to install
+- fzf, only for the directory browser
 
-- Go 1.24+
-- tmux 3.0+ (3.2+ for popup support)
-
-### Install
+## Install
 
 ```bash
 go install github.com/luytbq/tswitch@latest
 ```
 
-Or build from source:
+The binary lands in `~/go/bin`, which has to be on your `PATH`. Check with `tswitch version`.
+
+To build from a clone instead:
 
 ```bash
 git clone https://github.com/luytbq/tswitch
 cd tswitch
-go build -o tswitch
+make build
 ```
 
-### Install dependency `fzf`:
+Installing fzf, if you want the directory browser:
 
 | OS | Command |
 |----|---------|
@@ -45,63 +45,68 @@ go build -o tswitch
 | Arch Linux | `sudo pacman -S fzf` |
 | Any (Go) | `go install github.com/junegunn/fzf@latest` |
 
-
-## tmux Integration
+## tmux setup
 
 Add to your `~/.tmux.conf`:
 
 ```tmux
-# Open session/window switcher as a popup
+# Open the switcher as a popup
 bind-key S display-popup -E -w 80% -h 80% "tswitch"
 
 # Switch to the previous session
 bind-key l run-shell "tswitch last"
 
-# Open directory browser as a popup (requires fzf + browse_dirs config)
+# Open the directory browser as a popup (needs fzf and browse_dirs)
 bind-key f display-popup -E -w 80% -h 80% "tswitch browse"
 ```
 
-Reload with `tmux source-file ~/.tmux.conf`. Requires tmux 3.2+ for `display-popup`.
+Reload with `tmux source-file ~/.tmux.conf`. `display-popup` needs tmux 3.2 or newer; without it, run `tswitch` in a window.
 
-## Subcommands
+## Commands
 
-| Command | Description |
-|---------|-------------|
-| `tswitch` | Open the TUI |
-| `tswitch last` | Switch to the previous tmux session |
+| Command | What it does |
+|---------|--------------|
+| `tswitch` | Open the switcher |
+| `tswitch last` | Switch to the previous session and exit, no UI |
+| `tswitch browse` | Pick a directory with fzf and open it as a session |
+| `tswitch version` | Print the installed version |
 
-## Key Bindings
+## Keys
+
+Press `?` inside tswitch for the same list.
 
 | Key | Action |
 |-----|--------|
-| `h/j/k/l` or arrows | Navigate |
+| `h/j/k/l` or arrows | Move the cursor |
+| `o` | Grid: drill in one level. List: fold or unfold |
+| `Enter` or `Space` | Switch to whatever the cursor is on, and quit |
+| `Esc` | Back one level, or fold, or quit |
 | `v` | Switch between card grid and tree list |
-| `s` | Cycle session sort: `recent`, `name`, `manual` |
-| `o` | Grid: drill into focused item. List: fold/unfold |
-| `Enter` | Switch directly to focused item |
-| `Space` | Quick-switch to session's active window |
-| `Esc` | Back one level / fold / quit |
-| `H/J/K/L` | Grid: reorder focused item. List: `J/K` reorder, `H/L` fold/unfold all |
-| `m` + key | Mark current item with a hotkey |
-| _mark key_ | Jump to marked session/window |
-| `/` | Fuzzy search filter |
-| `Tab` | Switch the preview between pane capture and metadata |
+| `s` | Cycle the sort order |
+| `H/L` | List: fold or unfold every session |
+| `J/K` | Move the focused item up or down (sort `manual` only) |
+| `m` then a key | Mark the focused item with that key |
+| a mark key | Jump to whatever that key is marked to |
+| `/` | Fuzzy search |
+| `Tab` | Switch the preview between pane contents and metadata |
 | `n` | New session or window |
-| `r` | Rename focused item |
-| `d` | Kill focused item (with confirmation) |
-| `x` | Cut focused window/pane to clipboard |
-| `p` | Paste clipboard onto focused destination |
-| `t` | Reserved for tagging; no action bound yet |
-| `?` | Key reference overlay (`?` or `Esc` closes it) |
+| `r` | Rename |
+| `d` | Kill, with confirmation |
+| `x` | Cut the focused window or pane, press again to cancel |
+| `p` | Paste what you cut onto the focused destination |
+| `f` | Open the directory browser (needs fzf and `browse_dirs`) |
+| `?` | Show this list |
 | `q` | Quit |
+
+In the grid, `H/J/K/L` all reorder, since the cursor moves with `h/j/k/l`.
 
 ## Views
 
-`v` switches between two ways of showing the same sessions, and the choice is remembered.
+`v` switches between two ways of showing the same sessions, and tswitch remembers which one you used last.
 
-**Grid** — cards laid out left to right, then top to bottom. `o` drills down one level at a time: sessions, then windows, then panes.
+**Grid** lays sessions out as cards, left to right then top to bottom. `o` drills down one level at a time: sessions, then windows, then panes, and `Esc` comes back up.
 
-**List** — an indented tree where sessions, windows and panes share one screen. Every node starts folded, so a long session list fits without scrolling; `o` or `l` unfolds the node under the cursor and `h` folds it again. Fold state is remembered between runs. `Enter` switches to whatever the cursor is on, at any depth.
+**List** is an indented tree where sessions, windows and panes share one screen. Every node starts folded, so forty sessions still fit without scrolling. `o` or `l` unfolds the node under the cursor, `h` folds it again, and `H`/`L` do it to all of them at once. What you left unfolded is still unfolded next time. `Enter` switches to whatever the cursor is on, at any depth, so you can jump straight to a pane three levels down.
 
 ## Sorting
 
@@ -109,64 +114,59 @@ Reload with `tmux source-file ~/.tmux.conf`. Requires tmux 3.2+ for `display-pop
 
 | Mode | Order |
 |------|-------|
-| `recent` | most recently attached first (the default) |
-| `name` | by name, with digit runs compared as numbers so `2` sorts before `19` |
-| `manual` | the order you built with `H/J/K/L`, stored in `session_order` |
+| `recent` | most recently used first, the default |
+| `name` | by name, with digits compared as numbers, so `2` comes before `19` |
+| `manual` | the order you built with `J/K` |
 
-The session you are currently in is pinned to the top in every mode, and the cursor starts on the row below it, so opening the switcher and pressing `Enter` takes you back where you came from. Reordering keys only apply in `manual` mode.
+The session you are in sits at the top in every mode, and the cursor starts one row below it. Open the switcher, press `Enter`, and you are back where you came from. `J/K` only reorder in `manual` mode; in the other two tswitch tells you to press `s` first.
+
+## Marks
+
+Press `m` and then any unused key to mark whatever the cursor is on. A session, a window or a pane all work. After that, pressing that key anywhere in the switcher takes you straight there, and the mark shows up beside the item as `[key]`.
+
+Marks are saved, so they survive restarts. Keys already bound to a command are refused, and tswitch says so.
+
+## Moving windows and panes
+
+`x` cuts the focused window or pane and shows a banner at the top. Navigate wherever you want, then press `p`: a window pastes onto a session, a pane pastes onto a window. The banner follows you across views, so you can take your time finding the destination. Pressing `x` again cancels.
 
 ## Configuration
 
-### `tswitch-config.json`
+### Preferences: `tswitch-config.json`
 
-tswitch looks for `tswitch-config.json` in two locations, in this order:
+tswitch looks for this file next to the binary first (for example `~/go/bin/tswitch-config.json`), then at `~/.tswitch/tswitch-config.json`. The first one found wins, and if there is none, tswitch runs on defaults.
 
-1. **Next to the binary** — the same directory as the `tswitch` executable (e.g. `~/go/bin/tswitch-config.json` if you installed via `go install`).
-2. **User home** — `~/.tswitch/tswitch-config.json`.
+A complete example listing every option ships with the source: [`tswitch-config.json`](./tswitch-config.json). Save it as `~/.tswitch/tswitch-config.json` and any tswitch on your machine picks it up.
 
-The first file found wins; if neither exists, tswitch runs with defaults (no custom keys, no browse directories).
+**`keys`** rebinds any command. Names: `move_up`, `move_down`, `move_left`, `move_right`, `confirm`, `quick_swap`, `direct_switch`, `back`, `start_mark`, `new`, `rename`, `kill`, `cut`, `paste`, `tag`, `reorder_up`, `reorder_down`, `reorder_left`, `reorder_right`, `toggle_view`, `cycle_sort`, `toggle_preview`, `toggle_help`, `filter`, `quit`, `browse_dirs`.
 
-A complete reference config listing every supported key binding, `browse_dirs`, and `browse_exclude` is checked into the repo at [`tswitch-config.json`](./tswitch-config.json) — use it as a starting template. Save it to `~/.tswitch/tswitch-config.json` and it will be picked up by any `tswitch` binary on your system.
+**`ui.preview_refresh_ms`** is how often the preview refetches the focused pane, in milliseconds, default `1000`. Set it to `0` to refresh only when the cursor moves. Anything below `100` is raised to `100`, because every refresh runs a `tmux capture-pane`. Only the pane-contents preview refreshes; metadata holds still, and nothing is fetched while a dialog or the key list covers the panel.
 
-**`keys`** — override default key bindings. Action names: `move_up`, `move_down`, `move_left`, `move_right`, `confirm`, `quick_swap`, `direct_switch`, `back`, `start_mark`, `new`, `rename`, `kill`, `cut`, `paste`, `tag`, `reorder_up`, `reorder_down`, `reorder_left`, `reorder_right`, `toggle_view`, `cycle_sort`, `toggle_preview`, `toggle_help`, `filter`, `quit`, `browse_dirs`.
+**`ui.card_min_width`** is the narrowest a grid card may get, in characters, default `16`. Raise it if your session names are being truncated; `20` suits names longer than about a dozen characters. Wider cards mean fewer columns.
 
-**`ui.preview_refresh_ms`** — how often the preview refetches the focused pane, in milliseconds (default: `1000`). Set it to `0` to turn the live refresh off and go back to refreshing only when the cursor moves. Values below `100` are raised to `100`, since every refresh runs one `tmux capture-pane`. Only the capture preview refreshes; metadata holds still, and nothing is fetched while a dialog or the help screen covers the panel.
+**`browse_dirs`** lists the directories `tswitch browse` offers, as `{path, depth}` pairs, where `depth` is how many levels down to look. Needs [fzf](https://github.com/junegunn/fzf) on your `PATH`.
 
-**`ui.card_min_width`** — minimum card content width in characters (default: `16`). Increase this to fit longer session/window names without truncation; for example, `20` is a good value if your names regularly exceed 11–12 characters. Wider cards mean fewer columns on the same terminal width.
+**`browse_exclude`** lists directory names to skip while scanning, matched on the name alone, so `node_modules` skips every one of them.
 
-**`browse_dirs`** — directories that `tswitch browse` scans for subdirectories to open as new tmux sessions. Each entry is a `{path, depth}` pair; `depth` is how many levels to descend. Requires [`fzf`](https://github.com/junegunn/fzf) to be available in `PATH`.
+### State: `~/.tswitch/state.yaml`
 
+tswitch writes this itself. It holds your marks, the manual order, which nodes are unfolded, and the view, sort and preview modes you last used. You do not normally edit it.
 
-**`browse_exclude`** — directory names to skip while scanning `browse_dirs` (matched by basename).
-
-### Runtime state — `~/.tswitch/state.yaml`
-
-Auto-managed by tswitch. Stores marks, session/window ordering, tags, the fold state of the tree list, and the last-used view, sort and preview modes. You normally don't need to edit this by hand.
-
-`settings.pin_current_first` is the one knob with no key bound to it: set it to `false` to stop pinning the current session to the top of the list.
-
-## Releasing
-
-Go has no package registry to submit to. Publishing a version means pushing a semver git tag to the public repo: the first time anyone asks for it, `proxy.golang.org` fetches that tag from GitHub and stores it forever, and `pkg.go.dev` builds its page from the proxy afterwards.
-
-```bash
-scripts/go-release.sh patch              # v0.4.1 -> v0.4.2
-scripts/go-release.sh minor "message"    # v0.4.1 -> v0.5.0
-scripts/go-release.sh v1.0.0
-scripts/go-release.sh patch --dry-run    # run every check, tag nothing
-```
-
-The script refuses to tag unless tracked files are committed, the branch is level with its upstream (the proxy fetches from the remote, so an unpushed commit cannot be released), `go build` and `go vet` pass, and `go.mod`/`go.sum` are tidy. A tag is permanent once the proxy has served it, which is why the checks run first. After pushing the tag it asks the proxy for the new version and installs it from there, so a release is proven to work before the script reports success.
-
-`scripts/tag-release.sh` is the older, narrower script: it only tags and pushes.
+One setting there has no key bound to it: set `settings.pin_current_first` to `false` to stop pinning the session you are in to the top.
 
 ## Troubleshooting
 
-**No sessions found** — make sure tmux is running (`tmux list-sessions`).
+**No sessions found.** Check that tmux is actually running, with `tmux list-sessions`.
 
-**Popup doesn't work** — tmux 3.2+ is required for `display-popup`. Check with `tmux -V`.
+**The popup does nothing.** `display-popup` needs tmux 3.2 or newer. Check with `tmux -V`, and run `tswitch` in an ordinary window otherwise.
 
-**`tswitch browse` prints `Error: no browse directories configured`** — either no `tswitch-config.json` was found in the two lookup locations (see [Configuration](#tswitch-configjson)), or the config file exists but has no `browse_dirs` entries. Add a `browse_dirs` array and restart.
+**`tswitch` is not found after installing.** `go install` puts it in `~/go/bin`. Add that to your `PATH`.
+
+**`J/K` do not move anything.** Reordering only works in `manual` sort. Press `s` until the header says `sort: manual`.
+
+**A key will not take a mark.** Keys bound to commands cannot be marks. Pick a letter or digit that does not appear in the key list above.
+
+**`tswitch browse` says no browse directories configured.** Either no `tswitch-config.json` was found in the two places tswitch looks, or it has no `browse_dirs`. See [Configuration](#preferences-tswitch-configjson).
 
 ## License
 
